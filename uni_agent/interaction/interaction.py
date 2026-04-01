@@ -89,6 +89,19 @@ class AgentInteraction:
                 )
             else:
                 content, tool_calls = await self.tools_manager.parse_action(model_output=model_output)
+                extra_fields = self.rollout_cache.get("extra_fields", {})
+                if extra_fields.get("backend") == "openai-compatible":
+                    serialized_tool_calls = []
+                    for tool_call in tool_calls:
+                        serialized_tool_call = tool_call.model_dump()
+                        serialized_tool_call["function"]["arguments"] = orjson.dumps(
+                            serialized_tool_call["function"]["arguments"]
+                        ).decode()
+                        serialized_tool_calls.append(serialized_tool_call)
+                    extra_fields["last_tool_calls"] = serialized_tool_calls
+                    api_messages = extra_fields.get("api_messages", [])
+                    if api_messages and api_messages[-1].get("role") == "assistant":
+                        api_messages[-1]["tool_calls"] = serialized_tool_calls
         except FunctionCallFormatError as e:
             user_message = {"role": "user", "content": str(e)}
             self.messages.append(user_message)  # error message

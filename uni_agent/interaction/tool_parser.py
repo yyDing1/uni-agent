@@ -144,6 +144,55 @@ class XMLToolParser:
         tool_call = OpenAIFunctionToolCall(id=str(uuid.uuid4()), type="function", function=function_call)
         return tool_call
 
+    def _parse_json_tool_call(self, tool_call_str: str, tools: list[OpenAIFunctionToolSchema]) -> OpenAIFunctionToolCall:
+        payload_text = tool_call_str.strip()
+        if payload_text.startswith("```"):
+            payload_text = regex.sub(r"^```(?:json)?\s*|\s*```$", "", payload_text, flags=regex.DOTALL).strip()
+
+        try:
+            payload = json.loads(payload_text)
+        except json.JSONDecodeError as exc:
+            raise FunctionCallFormatError("No function call found in the response.") from exc
+
+        if not isinstance(payload, dict):
+            raise FunctionCallFormatError("Invalid action: tool call payload must be a JSON object.")
+
+        function_name = payload.get("name")
+        if function_name is None and isinstance(payload.get("function"), dict):
+            function_name = payload["function"].get("name")
+        if not function_name:
+            raise FunctionCallFormatError("Invalid action: tool call JSON must contain a function name.")
+
+        param_config = self._get_arguments_config(function_name, tools)
+        arguments = payload.get("arguments")
+        if arguments is None and isinstance(payload.get("function"), dict):
+            arguments = payload["function"].get("arguments", {})
+        if arguments is None:
+            arguments = {}
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError as exc:
+                raise FunctionCallFormatError(
+                    f"Invalid action: arguments for function '{function_name}' are not valid JSON."
+                ) from exc
+        if not isinstance(arguments, dict):
+            raise FunctionCallFormatError(
+                f"Invalid action: arguments for function '{function_name}' must be a JSON object."
+            )
+
+        normalized_arguments = {}
+        for param_name, param_value in arguments.items():
+            if isinstance(param_value, str):
+                normalized_arguments[param_name] = self._convert_param_value(
+                    param_value, param_name, param_config, function_name
+                )
+            else:
+                normalized_arguments[param_name] = param_value
+
+        function_call = OpenAIFunctionCallSchema(name=function_name, arguments=normalized_arguments)
+        return OpenAIFunctionToolCall(id=str(uuid.uuid4()), type="function", function=function_call)
+
     def _get_function_calls(self, model_output: str) -> list[str]:
         # Find all tool calls
         matched_ranges = self.tool_call_regex.findall(model_output)
@@ -166,10 +215,18 @@ class XMLToolParser:
         if self.tool_call_start_token not in model_output:
             raise FunctionCallFormatError("No function call found in the response.")
 
-        function_calls = self._get_function_calls(model_output)
-        if len(function_calls) == 0:
-            raise FunctionCallFormatError("No function call found in the response.")
-        tool_calls = [self._parse_xml_function_call(function_call_str, tools) for function_call_str in function_calls]
+        try:
+            function_calls = self._get_function_calls(model_output)
+        except FunctionCallFormatError:
+            function_calls = []
+
+        if len(function_calls) > 0:
+            tool_calls = [self._parse_xml_function_call(function_call_str, tools) for function_call_str in function_calls]
+        else:
+            matched_ranges = self.tool_call_complete_regex.findall(model_output)
+            if len(matched_ranges) == 0:
+                raise FunctionCallFormatError("No function call found in the response.")
+            tool_calls = [self._parse_json_tool_call(raw_tool_call, tools) for raw_tool_call in matched_ranges]
 
         # Extract content before tool calls
         content_index = model_output.find(self.tool_call_start_token)
