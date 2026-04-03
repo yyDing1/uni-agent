@@ -4,6 +4,7 @@ from typing import Any
 
 from uni_agent.utils import get_event_loop
 from verl.utils.profiler import simple_timer
+from verl.utils.tokenizer import normalize_token_ids
 
 try:
     from openai import AsyncOpenAI
@@ -48,6 +49,7 @@ class AgentChatModel:
                 tools=self.tools_schemas,
             ),
         )
+        prompt_ids = normalize_token_ids(prompt_ids)
         return {
             "request_id": str(uuid.uuid4()),
             "prompt_ids": prompt_ids,
@@ -87,7 +89,8 @@ class AgentChatModel:
         **kwargs,
     ) -> list[dict] | dict:
         request_id = rollout_cache["request_id"]
-        prompt_ids = rollout_cache["prompt_ids"]
+        prompt_ids = normalize_token_ids(rollout_cache["prompt_ids"])
+        rollout_cache["prompt_ids"] = prompt_ids
         metrics = rollout_cache["metrics"]
 
         if len(prompt_ids) >= self.max_model_len:
@@ -139,11 +142,13 @@ class AgentChatModel:
         system_prompt_ids = await self.loop.run_in_executor(
             None, lambda: self.tokenizer.apply_chat_template(messages, tokenize=True)
         )
+        system_prompt_ids = normalize_token_ids(system_prompt_ids)
         eos_index = system_prompt_ids.index(self.tokenizer.eos_token_id)
         messages.extend(new_messages)
         full_prompt_ids = await self.loop.run_in_executor(
             None, lambda: self.tokenizer.apply_chat_template(messages, add_generation_prompt=True, tokenize=True)
         )
+        full_prompt_ids = normalize_token_ids(full_prompt_ids)
         tool_response_ids = full_prompt_ids[eos_index + 1 :]
         return tool_response_ids
 

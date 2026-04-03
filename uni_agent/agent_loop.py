@@ -19,6 +19,7 @@ from uni_agent.interaction import (
 from uni_agent.reward import load_reward_spec
 from verl.experimental.agent_loop.agent_loop import AgentLoopBase, AgentLoopOutput
 from verl.experimental.agent_loop.utils import resolve_config_path
+from verl.utils.tokenizer import normalize_token_ids
 
 
 class UniAgentLoop(AgentLoopBase):
@@ -164,7 +165,7 @@ class UniAgentLoop(AgentLoopBase):
         num_turns = len(interaction_result["trajectory"])
         self.logger.info(f"num_turns: {num_turns}")
 
-        prompt_ids = rollout_cache["prompt_ids"]
+        prompt_ids = normalize_token_ids(rollout_cache["prompt_ids"])
         traj_exit_reason = interaction_result["trajectory"][-1].exit_reason if num_turns > 0 else "unknown"
         should_mask_traj = self.mask_abnormal_exit_traj and traj_exit_reason != "finished"
         traj_masked = int(should_mask_traj)
