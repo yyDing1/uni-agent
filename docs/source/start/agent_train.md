@@ -72,6 +72,21 @@ This writes:
 - `${RAY_DATA_HOME}/data/swe_agent/r2e_gym_subset_filtered.parquet` as `TRAIN_FILE`
 - `${RAY_DATA_HOME}/data/swe_agent/swe_bench_verified.parquet` as `TEST_FILE`
 
+XML tool-call template
+
+For Qwen3-30B-A3B-Instruct, the main change in `tokenizer_config.json` is to replace the original `chat_template` with an XML-style tool-call template, then set `MODEL_PATH` to `Qwen3-30B-A3B-Instruct-xml-template`. This is needed because Uni-Agent expects tool calls to be serialized in XML rather than the default JSON-style format.
+
+```text
+# tokenizer_config.json
+"chat_template": "... <tool_call>
+<function=execute_bash>
+<parameter=command>
+str_replace_editor create ...
+</parameter>
+</function>
+</tool_call>"
+```
+
 ---
 
 ## Launch Sync/Async Training
