@@ -1,0 +1,12 @@
+orjson
+faiss-gpu-cu12
+# numpy==1.26.4
+torch
+transformers
+uvicorn
+fastapi
+httpx[socks]
+tqdm
+pydantic
+gunicorn
+ray

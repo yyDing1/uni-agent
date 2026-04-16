@@ -9,6 +9,7 @@ from .finish import FinishTool
 from .registry import get_tool, AbstractTool
 from .execute_bash import ExecuteBashTool
 from .search_arxiv import SearchArxivTool
+from .search import SearchWikiTool
 from .str_replace_editor import StrReplaceEditorTool
 from .submit import SubmitTool
 
@@ -26,6 +27,7 @@ __all__ = [
     "ExecuteBashTool",
     "FinishTool",
     "SearchArxivTool",
+    "SearchWikiTool",
     "StrReplaceEditorTool",
     "SubmitTool",
 ]

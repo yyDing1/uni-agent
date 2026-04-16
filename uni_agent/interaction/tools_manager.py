@@ -101,9 +101,12 @@ class ToolsManager:
             if param_key == "command":
                 continue
 
-            # Safely quote the param_value
-            param_value_quoted = shlex.quote(str(param_value))
+            # Use JSON for structured types so the script can json.loads them
+            if isinstance(param_value, (list, dict)):
+                param_str = json.dumps(param_value, ensure_ascii=False)
+            else:
+                param_str = str(param_value)
             cmd_parts.append(f"--{param_key}")
-            cmd_parts.append(param_value_quoted)
+            cmd_parts.append(shlex.quote(param_str))
 
         return " ".join(cmd_parts)
