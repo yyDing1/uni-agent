@@ -1,6 +1,7 @@
 working_dir: ./
 excludes: ["/.git/"]
 env_vars:
+  PYTHONPATH: "verl"
   VLLM_USE_V1: "1"
   TORCH_DISTRIBUTED_BACKEND: "nccl"
   NCCL_IB_DISABLE: "0"

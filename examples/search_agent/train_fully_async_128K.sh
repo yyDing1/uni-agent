@@ -23,8 +23,8 @@ experiment_datetime=$(date +%Y%m%d_%H%M)
 experiment_name=search-async-n$rollout_n-$experiment_datetime
 
 # ================= data =================
-asearcher_train=$DATA_ROOT/data/Asearcher_processed/train_tool_8192.parquet
-asearcher_test=$DATA_ROOT/data/Asearcher_processed/test_tool_100.parquet
+asearcher_train=$DATA_ROOT/data/asearcher_uni_processed/train.parquet
+asearcher_test=$DATA_ROOT/data/asearcher_uni_processed/test.parquet
 filter_overlong_prompts=False
 
 train_files="['$asearcher_train']"
