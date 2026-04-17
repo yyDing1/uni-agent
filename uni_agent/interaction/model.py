@@ -152,6 +152,12 @@ class AgentChatModel:
             ),
         )
         base_prompt_ids = normalize_token_ids(base_prompt_ids)
+
+        # Some chat templates (including the Qwen setup used in training) do not emit
+        # `eos_token_id` inside the rendered system-only prompt. Incremental prompt
+        # updates therefore must not depend on locating EOS in the template output.
+        # Instead, we diff the rendered token sequences and append only the suffix that
+        # appears after the longest shared prefix.
         messages.extend(new_messages)
         full_prompt_ids = await self.loop.run_in_executor(
             None,

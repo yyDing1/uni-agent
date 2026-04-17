@@ -51,6 +51,27 @@ class AgentInteraction:
         self.max_turns = max_turns
         self.logger = get_logger("interaction", run_id)
 
+    @staticmethod
+    def _compress_observation_for_history(observation: str, max_chars: int = 6_000) -> str:
+        if len(observation) <= max_chars:
+            return observation
+
+        prefix = "Observation:\n"
+        body = observation[len(prefix) :] if observation.startswith(prefix) else observation
+        head_budget = int(max_chars * 0.65)
+        tail_budget = max_chars - head_budget
+        compressed_body = body[:head_budget]
+        if tail_budget > 0:
+            compressed_body += "\n<response clipped for history>\n"
+            compressed_body += body[-tail_budget:]
+
+        note = (
+            f"\n<NOTE>This observation was compressed before being added to conversation history. "
+            f"The original observation had {len(observation)} characters.</NOTE>"
+        )
+        compressed_observation = compressed_body + note
+        return prefix + compressed_observation if observation.startswith(prefix) else compressed_observation
+
     async def step(self, step_idx: int):
         # step index start from 1
         step_output = StepOutput(step_idx=step_idx)
@@ -126,12 +147,13 @@ class AgentInteraction:
         with simple_timer("tool_calls", self.rollout_cache["metrics"]):
             try:
                 observation = await self.env.run_action(action_cmd, action_timeout=self.action_timeout)
-                tool_message = {"role": "tool", "content": observation}
+                observation_for_history = self._compress_observation_for_history(observation)
+                tool_message = {"role": "tool", "content": observation_for_history}
                 self.messages.append(tool_message)  # tool response message
                 self.rollout_cache = await self.model.append_messages_to_rollout_cache(
                     [tool_message], self.rollout_cache
                 )
-                step_output.observation = observation
+                step_output.observation = observation_for_history
             except ActionTimeoutError as e:
                 self.logger.error(str(e))
                 user_message = {"role": "user", "content": str(e)}

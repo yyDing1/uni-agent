@@ -98,21 +98,33 @@ class AgentEnv:
         await self.deployment.stop()
         self.logger.info("Environment shutdown completed")
 
+    @staticmethod
+    def _format_clipped_observation(observation: str, max_observation_length: int) -> str:
+        head_budget = int(max_observation_length * 0.7)
+        tail_budget = max_observation_length - head_budget
+        clipped_observation = observation[:head_budget]
+        if tail_budget > 0:
+            clipped_observation += "\n<response clipped>\n"
+            clipped_observation += observation[-tail_budget:]
+
+        elided_chars = max(len(observation) - max_observation_length, 0)
+        return (
+            f"Observation:\n{clipped_observation}\n"
+            f"<NOTE>Observations should not exceeded {max_observation_length} characters. "
+            f"{elided_chars} characters were elided. "
+            "Please try a different command that produces less output or "
+            "use head/tail/grep/redirect the output to a file. Do not use interactive pagers.</NOTE>"
+        )
+
     @auto_await
-    async def run_action(self, action_cmd: str, action_timeout: int, max_observation_length: int = 100_000) -> str:
+    async def run_action(self, action_cmd: str, action_timeout: int, max_observation_length: int = 12_000) -> str:
         try:
             observation = await self.communicate(input=action_cmd, timeout=action_timeout, check="ignore")
             observation = re.sub(r"\x1b\[[0-9;]*m|\r", "", observation)
             if observation.strip() == "":
                 observation = "Your command ran successfully and did not produce any output."
             elif len(observation) > max_observation_length:
-                observation = (
-                    f"Observation:\n{observation[:max_observation_length]}<response clipped>\n"
-                    f"<NOTE>Observations should not exceeded {max_observation_length} characters. "
-                    f"{max_observation_length - len(observation)} characters were elided. "
-                    "Please try a different command that produces less output or "
-                    "use head/tail/grep/redirect the output to a file. Do not use interactive pagers.</NOTE>"
-                )
+                observation = self._format_clipped_observation(observation, max_observation_length)
             else:
                 observation = f"Observation:\n{observation}"
             return observation

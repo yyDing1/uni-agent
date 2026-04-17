@@ -23,6 +23,21 @@ class ToolsManager:
         self.tools = [tc.get_tool() for tc in tools_manager_config.tools]
         self.tools_schemas = [t.get_tool_schema() for t in self.tools]
 
+    @staticmethod
+    def _select_single_tool_call(
+        content: str, tool_calls: list[OpenAIFunctionToolCall]
+    ) -> tuple[str, list[OpenAIFunctionToolCall]]:
+        if len(tool_calls) == 0:
+            raise FunctionCallFormatError("No function call found in the response.")
+        if len(tool_calls) == 1:
+            return content, tool_calls
+
+        warning_message = (
+            f"\n\n<NOTE>Only one tool call can be executed at a time. "
+            f"The first tool call was kept and {len(tool_calls) - 1} extra tool call(s) were ignored.</NOTE>"
+        )
+        return content + warning_message, [tool_calls[0]]
+
     async def parse_action(
         self,
         model_output: str,
@@ -30,13 +45,7 @@ class ToolsManager:
         tool_parser = XMLToolParser()
         tools = [OpenAIFunctionToolSchema(**schema) for schema in self.tools_schemas]
         content, tool_calls = tool_parser.extract_tool_calls(model_output, tools)
-
-        if len(tool_calls) == 0:
-            raise FunctionCallFormatError("No function call found in the response.")
-        elif len(tool_calls) > 1:
-            raise FunctionCallFormatError(f"Number of tool calls {len(tool_calls)} exceeds max_parallel_calls 1.")
-
-        return content, tool_calls
+        return self._select_single_tool_call(content, tool_calls)
 
     async def parse_structured_action(
         self,
@@ -71,11 +80,7 @@ class ToolsManager:
                 )
             )
 
-        if len(tool_calls) == 0:
-            raise FunctionCallFormatError("No function call found in the response.")
-        if len(tool_calls) > 1:
-            raise FunctionCallFormatError(f"Number of tool calls {len(tool_calls)} exceeds max_parallel_calls 1.")
-        return content, tool_calls
+        return self._select_single_tool_call(content, tool_calls)
 
     def get_tool_bash_command(self, tool_call: OpenAIFunctionToolCall) -> str:
         function: OpenAIFunctionCallSchema = tool_call.function
