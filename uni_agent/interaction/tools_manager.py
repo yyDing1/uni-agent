@@ -3,7 +3,7 @@ import shlex
 
 from pydantic import BaseModel, ConfigDict
 
-from uni_agent.interaction.tool_parser import FunctionCallFormatError, XMLToolParser
+from uni_agent.interaction.tool_parser import FunctionCallFormatError, get_tool_parser
 from uni_agent.tools import ToolConfig
 from verl.tools.schemas import OpenAIFunctionCallSchema, OpenAIFunctionToolCall, OpenAIFunctionToolSchema
 
@@ -12,6 +12,8 @@ class ToolsManagerConfig(BaseModel):
     """Config for the tools list."""
 
     tools: list[ToolConfig]
+    parser: str = "qwen3_coder"
+    """Name of the registered tool-call parser. Built-in: "qwen3_coder", "hermes"."""
     model_config = ConfigDict(extra="ignore")
 
 
@@ -22,14 +24,14 @@ class ToolsManager:
         self.tools_manager_config = tools_manager_config
         self.tools = [tc.get_tool() for tc in tools_manager_config.tools]
         self.tools_schemas = [t.get_tool_schema() for t in self.tools]
+        self._tool_parser = get_tool_parser(tools_manager_config.parser)
 
     async def parse_action(
         self,
         model_output: str,
     ) -> dict:
-        tool_parser = XMLToolParser()
         tools = [OpenAIFunctionToolSchema(**schema) for schema in self.tools_schemas]
-        content, tool_calls = tool_parser.extract_tool_calls(model_output, tools)
+        content, tool_calls = self._tool_parser.extract_tool_calls(model_output, tools)
 
         if len(tool_calls) == 0:
             raise FunctionCallFormatError("No function call found in the response.")

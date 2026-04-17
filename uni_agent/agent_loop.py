@@ -37,7 +37,10 @@ class UniAgentLoop(AgentLoopBase):
         self.logger = get_logger("agent-loop", run_id=self.run_id)
         # init chat model, tools manager and environment
         self.chat_model = self._init_chat_model(config_dict["model"])
-        self.tools_manager = self._init_tools_manager(config_dict["tools"])
+        self.tools_manager = self._init_tools_manager(
+            tools_config_list=config_dict["tools"],
+            parser=config_dict.get("tool_parser", "qwen3_coder"),
+        )
         self.env = self._init_env(config_dict["env"])
         self.output_dir = Path(config_dict["log_dir"]) / self.run_id
         self.interaction = AgentInteraction(
@@ -148,8 +151,8 @@ class UniAgentLoop(AgentLoopBase):
         chat_model = AgentChatModel(**config_dict)
         return chat_model
 
-    def _init_tools_manager(self, tools_config_list: list[dict]) -> ToolsManager:
-        tools_manager_config = ToolsManagerConfig(**{"tools": tools_config_list})
+    def _init_tools_manager(self, tools_config_list: list[dict], parser: str = "qwen3_coder") -> ToolsManager:
+        tools_manager_config = ToolsManagerConfig(tools=tools_config_list, parser=parser)
         return ToolsManager(tools_manager_config=tools_manager_config)
 
     def _init_env(self, config_dict: dict) -> AgentEnv:

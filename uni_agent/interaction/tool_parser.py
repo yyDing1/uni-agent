@@ -177,3 +177,104 @@ class XMLToolParser:
         content = model_output[:content_index]
 
         return content, tool_calls
+
+
+class HermesToolParser:
+    """Parser for the Hermes JSON tool-call format.
+    Expected format::
+        <tool_call>
+        {"name": "<function-name>", "arguments": {...}}
+        </tool_call>
+    """
+
+    _FORMAT_HINT = (
+        'Expected format:\n<tool_call>\n{"name": <function-name>, "arguments": <args-json-object>}\n</tool_call>'
+    )
+
+    def __init__(self):
+        self.tool_call_start_token: str = "<tool_call>"
+        self.tool_call_end_token: str = "</tool_call>"
+        self.tool_call_regex = regex.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", regex.DOTALL)
+
+    def extract_tool_calls(
+        self, model_output: str, tools: list[OpenAIFunctionToolSchema]
+    ) -> tuple[str, list[OpenAIFunctionToolCall]]:
+        if self.tool_call_start_token not in model_output:
+            raise FunctionCallFormatError(f"No function call found in the response. {self._FORMAT_HINT}")
+        if self.tool_call_end_token not in model_output:
+            raise FunctionCallFormatError(
+                f"Unclosed tool call: missing {self.tool_call_end_token}. {self._FORMAT_HINT}"
+            )
+
+        matches = self.tool_call_regex.findall(model_output)
+        if not matches:
+            raise FunctionCallFormatError(f"No function call found in the response. {self._FORMAT_HINT}")
+
+        valid_names = {tool.function.name for tool in tools if tool.type == "function"}
+
+        tool_calls: list[OpenAIFunctionToolCall] = []
+        for raw in matches:
+            tool_calls.append(self._parse_single(raw, valid_names))
+
+        content_index = model_output.find(self.tool_call_start_token)
+        return model_output[:content_index], tool_calls
+
+    def _parse_single(self, raw: str, valid_names: set[str]) -> OpenAIFunctionToolCall:
+        try:
+            obj = json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise FunctionCallFormatError(
+                f"Invalid tool_call JSON: {e.msg} (line {e.lineno} column {e.colno}). {self._FORMAT_HINT}"
+            ) from None
+
+        if not isinstance(obj, dict):
+            raise FunctionCallFormatError(
+                f"Invalid tool_call: expected a JSON object, got {type(obj).__name__}. {self._FORMAT_HINT}"
+            )
+        if "name" not in obj:
+            raise FunctionCallFormatError(f"Invalid tool_call: missing 'name' field. {self._FORMAT_HINT}")
+
+        name = obj["name"]
+        if not isinstance(name, str):
+            raise FunctionCallFormatError(
+                f"Invalid tool_call: 'name' must be a string, got {type(name).__name__}."
+            )
+        if name not in valid_names:
+            raise FunctionCallFormatError(
+                f"Invalid action: function '{name}' is not defined in the tools list.\n"
+                f"Allowed functions should be one of: {sorted(valid_names)}."
+            )
+
+        arguments: Any = obj.get("arguments", {})
+        if arguments is None:
+            arguments = {}
+        if isinstance(arguments, str):
+            # Some models double-encode arguments as a JSON string; accept that.
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError as e:
+                raise FunctionCallFormatError(
+                    f"Invalid arguments JSON for '{name}': {e.msg} (line {e.lineno} column {e.colno})."
+                ) from None
+        if not isinstance(arguments, dict):
+            raise FunctionCallFormatError(
+                f"Invalid arguments for '{name}': expected a JSON object, got {type(arguments).__name__}."
+            )
+
+        function_call = OpenAIFunctionCallSchema(name=name, arguments=arguments)
+        return OpenAIFunctionToolCall(id=str(uuid.uuid4()), type="function", function=function_call)
+
+
+_PARSER_REGISTRY: dict[str, type] = {
+    "qwen3_coder": XMLToolParser,
+    "hermes": HermesToolParser,
+}
+
+
+def get_tool_parser(name: str):
+    """Instantiate a tool-call parser by registered name."""
+    if name not in _PARSER_REGISTRY:
+        raise ValueError(
+            f"Unknown tool parser: {name!r}. Available parsers: {sorted(_PARSER_REGISTRY.keys())}."
+        )
+    return _PARSER_REGISTRY[name]()

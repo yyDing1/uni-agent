@@ -18,6 +18,8 @@
       RETRIEVAL_SERVICE_URL: "http://${RAY_HEAD_IP}:8001/retrieve"
       CRAWL_SERVICE_URL: "http://${RAY_HEAD_IP}:8001/crawl"
 
+  tool_parser: hermes
+
   tools:
     - name: search
     - name: finish
