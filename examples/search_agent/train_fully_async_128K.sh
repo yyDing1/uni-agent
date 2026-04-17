@@ -59,11 +59,11 @@ else
     ray_host_for_url="${RAY_HEAD_IP}"
 fi
 
-tmp_agent_config_path="${WORKING_DIR}/examples/search_agent/agent_config_${experiment_datetime}.yaml"
+tmp_agent_config="examples/search_agent/agent_config_${experiment_datetime}.yaml"
 sed -e "s|\${RAY_HEAD_IP}|${ray_host_for_url}|g" \
-    "${AGENT_CONFIG_PATH}" > "${tmp_agent_config_path}"
+    "${AGENT_CONFIG_PATH}" > "${WORKING_DIR}/${tmp_agent_config}"
 
-AGENT_CONFIG_PATH="${tmp_agent_config_path}"
+AGENT_CONFIG_PATH="${tmp_agent_config}"
 
 # ================= algorithm =================
 adv_estimator=grpo
@@ -228,4 +228,4 @@ ray job submit --no-wait \
     async_training.require_batches=$require_batches \
     async_training.partial_rollout=$partial_rollout
 
-rm -f "$tmp_agent_config_path"
+rm -f "${WORKING_DIR}/${tmp_agent_config}"
