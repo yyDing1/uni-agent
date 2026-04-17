@@ -73,12 +73,13 @@ class AgentEnv:
 
     @auto_await
     async def install_tools(self, tools: list[AbstractTool]) -> None:
+        install_dir = Path(self.deployment.tool_install_dir)
         for tool in tools:
             tool_name = tool.name
             local_tool_path = tool.local_path
             assert local_tool_path.is_file(), f"Tool {tool_name} not found"
 
-            container_tool_path = Path(f"/usr/local/bin/{tool_name}")
+            container_tool_path = install_dir / tool_name
             await self.deployment.copy_to_container(
                 src=local_tool_path,
                 tgt=container_tool_path,

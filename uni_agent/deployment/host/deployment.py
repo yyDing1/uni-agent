@@ -243,9 +243,16 @@ class HostDeployment(AbstractDeployment):
         self.logger.info("Host deployment stopped")
 
     async def copy_to_container(self, src: Path, tgt: Path):
-        dest = self._tool_dir / tgt.name
-        shutil.copy2(src, dest)
-        self.logger.debug(f"Copied tool {src.name} -> {dest}")
+        tgt.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, tgt)
+        self.logger.debug(f"Copied tool {src.name} -> {tgt}")
+
+    @property
+    def tool_install_dir(self) -> Path:
+        """Directory on the host where tool scripts are installed. Already on PATH."""
+        if self._tool_dir is None:
+            raise DeploymentNotStartedError()
+        return self._tool_dir
 
     @property
     def runtime(self) -> HostRuntime:

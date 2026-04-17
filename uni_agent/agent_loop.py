@@ -132,11 +132,12 @@ class UniAgentLoop(AgentLoopBase):
             "sampling_params": sampling_params,
         }
         config_dict["model"] = model_config
-        # env config (set sample-wise image)
-        image_name = kwargs["tools_kwargs"]["env"]["image"]
-        post_setup_cmd = kwargs["tools_kwargs"]["env"].get("post_setup_cmd", None)
-        config_dict["env"]["deployment"]["image"] = image_name
-        config_dict["env"]["post_setup_cmd"] = post_setup_cmd
+        # env config (optionally override sample-wise image / post_setup_cmd)
+        env_kwargs = kwargs.get("tools_kwargs", {}).get("env") or {}
+        if "image" in env_kwargs:
+            config_dict["env"]["deployment"]["image"] = env_kwargs["image"]
+        if "post_setup_cmd" in env_kwargs:
+            config_dict["env"]["post_setup_cmd"] = env_kwargs["post_setup_cmd"]
         # reward module
         reward_config = config_dict.get("reward", {})
         reward_config.update(kwargs["tools_kwargs"].get("reward", {}))

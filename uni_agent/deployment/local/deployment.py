@@ -254,6 +254,11 @@ class LocalDeployment(AbstractDeployment):
         await self.runtime.execute(Command(command=["mkdir", "-p", str(tgt.parent)]))
         await self.runtime.upload(UploadRequest(source_path=str(src), target_path=str(tgt)))
 
+    @property
+    def tool_install_dir(self) -> Path:
+        """Directory inside the container where tool scripts are installed."""
+        return Path("/usr/local/bin")
+
     async def stop(self):
         if self._stopped:
             return

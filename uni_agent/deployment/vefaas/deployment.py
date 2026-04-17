@@ -203,6 +203,11 @@ class VefaasDeployment(AbstractDeployment):
         # Upload file to container
         await self._runtime.upload(UploadRequest(source_path=str(src), target_path=str(tgt)))
 
+    @property
+    def tool_install_dir(self) -> Path:
+        """Directory inside the VEFAAS sandbox where tool scripts are installed."""
+        return Path("/usr/local/bin")
+
     async def stop(self):
         # Prevent duplicate stops
         if getattr(self, "_stopped", False):
