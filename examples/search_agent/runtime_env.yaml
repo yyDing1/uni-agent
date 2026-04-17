@@ -11,6 +11,8 @@ pip:
     - pydantic_settings
     - orjson
     - requests
+    - volcengine-python-sdk
+    - python-dotenv
   pip_check: false
 env_vars:
   VLLM_USE_V1: "1"
