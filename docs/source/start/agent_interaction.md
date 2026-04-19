@@ -8,11 +8,15 @@ The inference and verification scripts for this page live under `examples/agent_
 
 **Model performance on swe-bench-verified using uni-agent:**
 
-| **Model** | Inference Config | **Results (Avg@N)** | Hardware | Time |
-|-------|------------------|-----------------|----------|------|
-| Qwen3-Coder-30B-A3B-Instruct | temp=0.8, topp=0.9, tp=4, 100 turns, 64k context | 49.2 (N=4) | A100 Node x 4 | 91 min |
-| Qwen3-Coder-480B-A35B-Instruct |                  | todo | A100 Node x 4 |      |
-| Qwen3-Coder-Next |                  | todo | A100 Node x 4 |      |
+
+| **Model**                      | Inference Config                                   | **Results (Avg@N)** |
+| ------------------------------ | -------------------------------------------------- | ------------------- |
+| Qwen3-Coder-30B-A3B-Instruct   | temp=0.8, topp=0.9, tp=4, 100 turns, 64k context   | 49.2 (N=4)          |
+| Qwen3-Coder-480B-A35B-Instruct | temp=0.8, topp=0.9, tp=16, 500 turns, 128k context | 62.4 (N=4)          |
+| Qwen3-Coder-Next               | temp=0.8, topp=0.9, tp=16, 300 turns, 128k context | 66.6 (N=4)          |
+| Qwen3.5-4B                     | temp=0.8, topp=0.9, tp=4, 100 turns, 64k context   | 45.2 (N=1)          |
+| Qwen3.5-9B                     | temp=0.8, topp=0.9, tp=4, 100 turns, 64k context   | 50.6 (N=1)          |
+
 
 ---
 
@@ -41,10 +45,10 @@ The keys under `tools_kwargs` are defined per sample and must match what the age
 },
 ```
 
-- **`tools_kwargs.env`**: Per-sample environment setup:
+- `**tools_kwargs.env**`: Per-sample environment setup:
   - `image` is the Docker image for that instance, for example one provided by VEFAAS.
   - `post_setup_cmd` is the shell command run after the environment starts, for example `git checkout <base_commit>` followed by cleanup commands to restore the codebase to the correct state.
-- **`tools_kwargs.reward`**: Keys must match the selected `RewardSpec`'s constructor parameters (e.g. `name`, `metadata`).
+- `**tools_kwargs.reward**`: Keys must match the selected `RewardSpec`'s constructor parameters (e.g. `name`, `metadata`).
 
 By default, this writes `~/data/swe_agent/swe_bench_verified.parquet`. Use this path as `--data-path` in the next step.
 
@@ -68,9 +72,9 @@ python examples/agent_interaction/parallel_infer.py \
     --max-samples 4
 ```
 
-- **`--num-workers`**: Number of parallel agent environments (sandboxes). More workers use more concurrent tasks; tune to your deployment and quota.
-- **`--max-samples`**: Limit how many dataset rows to run (`-1` = no limit, full dataset).
-- **`--n`**: Number of rollouts per prompt (default 1). Increase for multiple samples per instance.
+- `**--num-workers**`: Number of parallel agent environments (sandboxes). More workers use more concurrent tasks; tune to your deployment and quota.
+- `**--max-samples**`: Limit how many dataset rows to run (`-1` = no limit, full dataset).
+- `**--n**`: Number of rollouts per prompt (default 1). Increase for multiple samples per instance.
 
 ### Multi-node / Ray job submission
 
@@ -170,20 +174,24 @@ The script uses a fixed number of Ray workers, for example 8, and a semaphore, f
 
 ## Quick Reference
 
-| Step              | Script                    | Purpose |
-|-------------------|---------------------------|--------|
-| Prepare data | `examples/data_preprocess/swe_bench_verified.py` | Download SWE-bench Verified and write a Parquet file with `tools_kwargs` |
-| Parallel inference | `parallel_infer.py` | Run the agent loop with many workers and compute the mean reward score |
-| Parallel verify | `parallel_verify_swe.py` | Re-run evaluation only, including gold patch application and reward computation, in parallel |
 
-| Argument / config   | Meaning |
-|---------------------|--------|
-| `--data-path`       | Path to prepared Parquet dataset. |
-| `--model-path`      | Local model checkpoint for inference. |
+| Step               | Script                                           | Purpose                                                                                      |
+| ------------------ | ------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| Prepare data       | `examples/data_preprocess/swe_bench_verified.py` | Download SWE-bench Verified and write a Parquet file with `tools_kwargs`                     |
+| Parallel inference | `parallel_infer.py`                              | Run the agent loop with many workers and compute the mean reward score                       |
+| Parallel verify    | `parallel_verify_swe.py`                         | Re-run evaluation only, including gold patch application and reward computation, in parallel |
+
+
+
+| Argument / config     | Meaning                                   |
+| --------------------- | ----------------------------------------- |
+| `--data-path`         | Path to prepared Parquet dataset.         |
+| `--model-path`        | Local model checkpoint for inference.     |
 | `--agent-config-path` | YAML for agent loop (tools, env, reward). |
-| `--num-workers`     | Number of parallel agent sandboxes. |
-| `--max-turns`       | Max interaction turns per episode. |
-| `--max-samples`     | Cap samples (`-1` = no limit). |
-| `--n`               | Rollouts per prompt. |
+| `--num-workers`       | Number of parallel agent sandboxes.       |
+| `--max-turns`         | Max interaction turns per episode.        |
+| `--max-samples`       | Cap samples (`-1` = no limit).            |
+| `--n`                 | Rollouts per prompt.                      |
+
 
 For more options, run `python examples/agent_interaction/parallel_infer.py --help`.
