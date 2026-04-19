@@ -78,7 +78,7 @@ We compare Uni-Agent with existing agent systems on parallel inference and verif
 
 | Model            | Benchmark          | OpenHands | Uni-Agent (1-Attempt, Avg@4) |
 | ---------------- | ------------------ |:---------:|:----------------------------:|
-| Qwen3-Coder-30B  | SWE-Bench_verified | -         | **48.8**                     |
+| Qwen3-Coder-30B  | SWE-Bench-Verified | -         | **48.8**                     |
 | Qwen3-Coder-480B | SWE-Bench-Verified | 62.4      | **64.2**                     |
 | Qwen3-Coder-Next | SWE-Bench-Verified | 66.6      | **67.7**                     |
 
