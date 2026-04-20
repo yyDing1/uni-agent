@@ -93,7 +93,7 @@ enable_chunked_prefill=True
 # ================= training =================
 offload=False
 TP_SIZE=4
-CP_SIZE=2
+CP_SIZE=4
 PP_SIZE=2
 VPP_SIZE=null
 EP_SIZE=8
