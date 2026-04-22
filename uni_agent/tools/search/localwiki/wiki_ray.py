@@ -1,8 +1,11 @@
-import ray
-import subprocess
+import ctypes
 import os
+import signal
+import subprocess
 import sys
 import time
+
+import ray
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -11,6 +14,20 @@ from shared_encoder import SharedEncoderActor, ensure_ray_initialized
 NUM_RESERVED_CPUS = int(os.getenv("NUM_RESERVED_CPUS", "16"))
 NUM_ENCODER_GPUS = int(os.getenv("NUM_ENCODER_GPUS", "1"))
 data_root = os.getenv("DATA_ROOT", "/mnt/hdfs/went")
+
+
+def _preexec_die_with_parent():
+    """Run in the uvicorn subprocess: detach into its own process group so we
+    can kill the whole tree, and ask the kernel to SIGTERM us if the actor
+    process (our parent) ever dies (Linux-only, via prctl PR_SET_PDEATHSIG).
+    """
+    os.setsid()
+    try:
+        libc = ctypes.CDLL("libc.so.6", use_errno=True)
+        PR_SET_PDEATHSIG = 1
+        libc.prctl(PR_SET_PDEATHSIG, signal.SIGTERM, 0, 0, 0)
+    except OSError:
+        pass
 
 
 @ray.remote(num_cpus=NUM_RESERVED_CPUS)
@@ -46,7 +63,33 @@ class WikiRetrievalManager:
         })
 
         print(f"Starting Wiki Retrieval HTTP service on port {self.config['port']}")
-        self.process = subprocess.Popen(cmd, env=env, cwd=os.path.dirname(os.path.abspath(__file__)))
+        self.process = subprocess.Popen(
+            cmd,
+            env=env,
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            preexec_fn=_preexec_die_with_parent,
+        )
+
+    def stop_service(self):
+        """Best-effort kill of the uvicorn process group."""
+        if self.process is None:
+            return
+        try:
+            pgid = os.getpgid(self.process.pid)
+            os.killpg(pgid, signal.SIGTERM)
+            try:
+                self.process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                os.killpg(pgid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+        self.process = None
+
+    def __del__(self):
+        try:
+            self.stop_service()
+        except Exception:
+            pass
 
     def wait_forever(self):
         while True:
@@ -134,4 +177,12 @@ print(f"All {len(encoder_actors)} encoder actor(s) warmed up.")
 wiki_actor = WikiRetrievalManager.remote(wiki_config)
 wiki_actor.start_service.remote()
 
-ray.get(wiki_actor.wait_forever.remote())
+try:
+    ray.get(wiki_actor.wait_forever.remote())
+except KeyboardInterrupt:
+    print("Driver received Ctrl+C, stopping wiki service...")
+    try:
+        ray.get(wiki_actor.stop_service.remote(), timeout=15)
+    except Exception as e:
+        print(f"stop_service failed: {e}")
+    ray.kill(wiki_actor, no_restart=True)
