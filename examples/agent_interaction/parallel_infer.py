@@ -30,7 +30,7 @@ def init_config(args: argparse.Namespace) -> DictConfig:
         config = compose(config_name="ppo_trainer")
 
     # Override rollout configs
-    config.actor_rollout_ref.rollout.agent.agent_loop_config_path = os.path.expanduser(args.agent_config_path)
+    config.actor_rollout_ref.rollout.agent.agent_loop_config_path = str(Path(args.agent_config_path).expanduser().resolve())
     config.actor_rollout_ref.rollout.agent.num_workers = args.num_workers
     config.actor_rollout_ref.rollout.multi_turn.max_assistant_turns = args.max_turns
     config.actor_rollout_ref.rollout.multi_turn.max_parallel_calls = 1
@@ -43,8 +43,6 @@ def init_config(args: argparse.Namespace) -> DictConfig:
     config.actor_rollout_ref.rollout.calculate_log_probs = True
 
     # Hardware configs
-    config.actor_rollout_ref.rollout.nnodes = args.nnodes
-    config.actor_rollout_ref.rollout.n_gpus_per_node = args.n_gpus_per_node
     config.trainer.nnodes = args.nnodes
     config.trainer.n_gpus_per_node = args.n_gpus_per_node
 
@@ -74,7 +72,7 @@ def run_inference(args: argparse.Namespace):
     # 2. Init rollout manager
     logger.info("Initializing configuration and AgentLoopManager...")
     config = init_config(args)
-    agent_loop_manager = AgentLoopManager.create(config=config)
+    agent_loop_manager = AgentLoopManager(config=config)
 
     # 3. Load dataset
     data_path = os.path.expanduser(args.data_path)

@@ -1,0 +1,36 @@
+- name: swe_agent
+
+  _target_: uni_agent.agent_loop.UniAgentLoop
+
+  concurrency: 16
+  log_dir: ${oc.env:WORK_DIR}/swebench_qwen3_8b
+  mask_abnormal_exit_traj: false
+
+  interaction:
+    action_timeout: 300
+    max_turns: 100
+
+  env:
+    deployment:
+      type: local
+      command: /usr/bin/python3 -m swerex.server --auth-token {token}
+      timeout: 600
+      startup_timeout: 600
+      container_runtime: docker
+      network: zzq_rl_net
+    env_variables:
+      PIP_PROGRESS_BAR: "off"
+      PIP_CACHE_DIR: "~/.cache/pip"
+      PAGER: "cat"
+      MANPAGER: "cat"
+      LESS: "-R"
+      TQDM_DISABLE: "1"
+      GIT_PAGER: "cat"
+
+  tools:
+    - name: str_replace_editor
+    - name: execute_bash
+    - name: submit
+
+  reward:
+    eval_timeout: 600

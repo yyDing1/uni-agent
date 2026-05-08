@@ -118,6 +118,21 @@ class LocalDeployment(AbstractDeployment):
         except FileNotFoundError as exc:
             raise RuntimeError(f"Container runtime {self._config.container_runtime!r} was not found in PATH") from exc
 
+    def _format_runtime_error(self, exc: Exception) -> str:
+        if not isinstance(exc, subprocess.CalledProcessError):
+            return str(exc)
+
+        stdout = (exc.stdout or "").strip()
+        stderr = (exc.stderr or "").strip()
+        details = [
+            f"command exited with code {exc.returncode}: {_shell_join(exc.cmd)}",
+        ]
+        if stdout:
+            details.append(f"stdout:\n{stdout}")
+        if stderr:
+            details.append(f"stderr:\n{stderr}")
+        return "\n".join(details)
+
     def _get_current_container_network(self) -> str | None:
         if not _is_running_in_container():
             return None
@@ -206,12 +221,12 @@ class LocalDeployment(AbstractDeployment):
     async def start(self, max_retries: int = 5):
         token = self._get_token()
         command = self._config.command.format(token=token)
-        published_port = self._config.published_port or _pick_free_port()
         container_name = self._config.container_name or f"uni-agent-{_sanitize_name(self.run_id)}"
         self._stopped = False
 
         last_error: Exception | None = None
         for attempt in range(max_retries):
+            published_port = self._config.published_port or _pick_free_port()
             self.logger.info(
                 f"Starting local deployment with runtime={self._config.container_runtime}, image={self._config.image}."
             )
@@ -241,7 +256,9 @@ class LocalDeployment(AbstractDeployment):
             except Exception as exc:
                 last_error = exc
                 logs = self._get_container_logs(container_name)
-                self.logger.error(f"Failed to start local sandbox: {exc}\nContainer logs:\n{logs}")
+                self.logger.error(
+                    f"Failed to start local sandbox: {self._format_runtime_error(exc)}\nContainer logs:\n{logs}"
+                )
                 await self.stop()
                 if attempt < max_retries - 1:
                     sleep_time = min(30, 2**attempt)

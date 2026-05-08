@@ -144,21 +144,76 @@ class XMLToolParser:
         tool_call = OpenAIFunctionToolCall(id=str(uuid.uuid4()), type="function", function=function_call)
         return tool_call
 
-    def _get_function_calls(self, model_output: str) -> list[str]:
-        # Find all tool calls
+    def _parse_json_function_call(
+        self, tool_call_str: str, tools: list[OpenAIFunctionToolSchema]
+    ) -> OpenAIFunctionToolCall:
+        try:
+            tool_call_data = json.loads(tool_call_str.strip())
+        except json.JSONDecodeError as exc:
+            raise FunctionCallFormatError("Invalid function call format: tool call is not valid JSON.") from exc
+
+        if not isinstance(tool_call_data, dict):
+            raise FunctionCallFormatError("Invalid function call format: JSON tool call must be an object.")
+
+        function_data = tool_call_data.get("function")
+        if isinstance(function_data, dict):
+            function_name = function_data.get("name")
+            arguments = function_data.get("arguments", {})
+        else:
+            function_name = tool_call_data.get("name")
+            arguments = tool_call_data.get("arguments", {})
+
+        if not isinstance(function_name, str) or not function_name:
+            raise FunctionCallFormatError("Invalid function call format: Cannot find function name.")
+
+        param_config = self._get_arguments_config(function_name, tools)
+
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError as exc:
+                raise FunctionCallFormatError(
+                    f"Invalid action: arguments for function '{function_name}' are not valid JSON."
+                ) from exc
+        if arguments is None:
+            arguments = {}
+        if not isinstance(arguments, dict):
+            raise FunctionCallFormatError(
+                f"Invalid action: arguments for function '{function_name}' must be a JSON object."
+            )
+
+        param_dict = {}
+        for param_name, param_value in arguments.items():
+            if param_name not in param_config and param_config != {}:
+                raise FunctionCallFormatError(
+                    f"Invalid action: parameter '{param_name}' is not defined "
+                    f"in the parameters for function '{function_name}'.\n"
+                    f"Allowed parameters for function '{function_name}': {list(param_config.keys())}."
+                )
+            if isinstance(param_value, str):
+                param_value = self._convert_param_value(param_value, param_name, param_config, function_name)
+            param_dict[param_name] = param_value
+
+        function_call = OpenAIFunctionCallSchema(name=function_name, arguments=param_dict)
+        tool_call = OpenAIFunctionToolCall(
+            id=tool_call_data.get("id", str(uuid.uuid4())),
+            type=tool_call_data.get("type", "function"),
+            function=function_call,
+        )
+        return tool_call
+
+    def _get_raw_tool_calls(self, model_output: str) -> list[str]:
         matched_ranges = self.tool_call_regex.findall(model_output)
         raw_tool_calls = [match[0] if match[0] else match[1] for match in matched_ranges]
-
-        # Back-off strategy if no tool_call tags found
-        if len(raw_tool_calls) == 0:
+        if not raw_tool_calls:
             raise FunctionCallFormatError("No function call found in the response.")
+        return raw_tool_calls
 
+    def _get_xml_function_calls(self, raw_tool_calls: list[str]) -> list[str]:
         raw_function_calls = []
         for tool_call in raw_tool_calls:
             raw_function_calls.extend(self.tool_call_function_regex.findall(tool_call))
-
-        function_calls = [match[0] if match[0] else match[1] for match in raw_function_calls]
-        return function_calls
+        return [match[0] if match[0] else match[1] for match in raw_function_calls]
 
     def extract_tool_calls(
         self, model_output: str, tools: list[OpenAIFunctionToolSchema]
@@ -166,12 +221,20 @@ class XMLToolParser:
         if self.tool_call_start_token not in model_output:
             raise FunctionCallFormatError("No function call found in the response.")
 
-        function_calls = self._get_function_calls(model_output)
-        if len(function_calls) == 0:
-            raise FunctionCallFormatError("No function call found in the response.")
-        tool_calls = [self._parse_xml_function_call(function_call_str, tools) for function_call_str in function_calls]
+        raw_tool_calls = self._get_raw_tool_calls(model_output)
+        xml_function_calls = self._get_xml_function_calls(raw_tool_calls)
 
-        # Extract content before tool calls
+        if xml_function_calls:
+            tool_calls = [
+                self._parse_xml_function_call(fc, tools)
+                for fc in xml_function_calls
+            ]
+        else:
+            tool_calls = [
+                self._parse_json_function_call(tc, tools)
+                for tc in raw_tool_calls
+            ]
+
         content_index = model_output.find(self.tool_call_start_token)
         content_index = content_index if content_index >= 0 else model_output.find(self.tool_call_prefix)
         content = model_output[:content_index]

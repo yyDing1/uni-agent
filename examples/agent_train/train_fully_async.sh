@@ -13,6 +13,11 @@ RUNTIME_ENV=${RUNTIME_ENV:-"${RAY_DATA_HOME}/data/swe_agent/runtime_env.yaml"}
 # Must be launched from the repository root so Ray packages both `verl/` and `uni_agent/`.
 AGENT_CONFIG_PATH=${AGENT_CONFIG_PATH:-"${RAY_DATA_HOME}/data/swe_agent/agent_config.yaml"}
 
+RAY_RUNTIME_ENV_ARGS=(--runtime-env "${RUNTIME_ENV}")
+if [[ -n "${RUNTIME_ENV_JSON:-}" ]]; then
+    RAY_RUNTIME_ENV_ARGS=(--runtime-env-json "${RUNTIME_ENV_JSON}")
+fi
+
 rollout_mode="async"
 rollout_name="vllm" # sglang or vllm
 
@@ -79,7 +84,7 @@ trigger_parameter_sync_step=4
 require_batches=1
 partial_rollout=True
 
-ray job submit --no-wait --runtime-env $RUNTIME_ENV \
+ray job submit --no-wait "${RAY_RUNTIME_ENV_ARGS[@]}" \
     -- python3 -m verl.experimental.fully_async_policy.fully_async_main \
     --config-name='fully_async_ppo_megatron_trainer.yaml' \
     hydra.searchpath=[pkg://verl.trainer.config] \

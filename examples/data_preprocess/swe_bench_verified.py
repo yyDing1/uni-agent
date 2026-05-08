@@ -1,16 +1,20 @@
 # ruff: noqa: E501
 import argparse
 import os
+from pathlib import Path
+from typing import Any
 
-from datasets import load_dataset
+from datasets import Dataset, load_dataset
+
+from dataset_utils import get_swe_bench_sandbox_image_name, load_instance_ids, load_local_dataset
 
 impl = os.getenv("DEPLOYMENT", "vefaas").lower()
-if impl == "local":
-    raise NotImplementedError("Local deployment is not implemented yet")
-elif impl == "vefaas":
+if impl == "vefaas":
     from uni_agent.deployment.vefaas.deployment import get_vefaas_image_name
-else:
+elif impl != "local":
     raise ValueError(f"Invalid deployment implementation: {impl}")
+else:
+    get_vefaas_image_name = None
 
 
 SYSTEM_PROMPT = """
@@ -95,11 +99,40 @@ A successful resolution means:
 """.strip()
 
 
-def build_swe_bench_verified():
-    def process_swe_bench_verified(example):
-        dataset_id = "swe-bench-verified"
+DEFAULT_DATASET_DIR = "~/dataset/SWE-bench_Verified"
+DEFAULT_SAVE_DIR = "~/dataset/verl/SWE-bench_Verified"
+
+
+def get_local_image_name(instance_id: str) -> str:
+    return get_swe_bench_sandbox_image_name(instance_id)
+
+
+def get_image_name(instance_id: str) -> str:
+    if impl == "local":
+        return get_local_image_name(instance_id)
+
+    dataset_id = "swe-bench-verified"
+    return get_vefaas_image_name(dataset_id, instance_id)
+
+
+def load_swe_bench_verified(dataset_dir: str, split: str) -> Dataset:
+    if impl == "local":
+        print(f"Loading local SWE-bench Verified dataset from {dataset_dir}...", flush=True)
+        return load_local_dataset(Path(dataset_dir), split)
+
+    data_source = "princeton-nlp/SWE-bench_Verified"
+    print(f"Loading the {data_source} dataset from huggingface...", flush=True)
+    return load_dataset(data_source, split=split)
+
+
+def build_swe_bench_dataset(
+    dataset_dir: str = DEFAULT_DATASET_DIR,
+    split: str = "test",
+    max_instances: int | None = None,
+    instance_ids: set[str] | None = None,
+) -> Dataset:
+    def process_swe_bench_verified(example: dict[str, Any]):
         instance_id = example["instance_id"]
-        image_name = get_vefaas_image_name(dataset_id, instance_id)
         reset_cmds = [
             "cd /testbed",
             "git restore .",
@@ -117,30 +150,47 @@ def build_swe_bench_verified():
             "extra_info": {
                 "tools_kwargs": {
                     "env": {
-                        "image": image_name,
+                        "image": get_image_name(instance_id),
                         "post_setup_cmd": reset_script,
                     },
                     "reward": {
                         "name": "swe_bench",
-                        "metadata": example,
+                        "metadata": dict(example),
                     },
                 },
             },
         }
         return sample
 
-    data_source = "princeton-nlp/SWE-bench_Verified"
-    print(f"Loading the {data_source} dataset from huggingface...", flush=True)
-    dataset = load_dataset(data_source, split="test")
-    dataset = dataset.map(process_swe_bench_verified, remove_columns=dataset.column_names)
-    return dataset
+    dataset = load_swe_bench_verified(dataset_dir, split)
+    if instance_ids is not None:
+        dataset = dataset.filter(lambda example: example["instance_id"] in instance_ids)
+    if max_instances is not None:
+        dataset = dataset.select(range(min(max_instances, len(dataset))))
+    return dataset.map(process_swe_bench_verified, remove_columns=dataset.column_names)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--local-save-dir", default="~/data/swe_agent")
+    parser.add_argument("--dataset-dir", default=DEFAULT_DATASET_DIR)
+    parser.add_argument("--split", default="test")
+    parser.add_argument("--local-save-dir", default=DEFAULT_SAVE_DIR)
+    parser.add_argument("--output-name", default="swe_bench_verified.parquet")
+    parser.add_argument("--max-instances", type=int, default=None)
+    parser.add_argument("--instance-ids-file", default=None)
 
     args = parser.parse_args()
 
-    sbv_dataset = build_swe_bench_verified()
-    sbv_dataset.to_parquet(f"{args.local_save_dir}/swe_bench_verified.parquet")
+    instance_ids = load_instance_ids(args.instance_ids_file)
+    sbv_dataset = build_swe_bench_dataset(
+        dataset_dir=args.dataset_dir,
+        split=args.split,
+        max_instances=args.max_instances,
+        instance_ids=instance_ids,
+    )
+
+    save_dir = Path(args.local_save_dir).expanduser()
+    save_dir.mkdir(parents=True, exist_ok=True)
+    output_path = save_dir / args.output_name
+    sbv_dataset.to_parquet(str(output_path))
+    print(f"Saved {len(sbv_dataset)} examples to {output_path}")

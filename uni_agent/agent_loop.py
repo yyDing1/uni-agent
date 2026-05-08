@@ -1,11 +1,12 @@
 import asyncio
 import json
+import os
 import pickle
 import uuid
 from pathlib import Path
 from typing import Any
 
-import yaml
+from omegaconf import OmegaConf
 
 from uni_agent.async_logging import add_file_handler, get_logger
 from uni_agent.interaction import (
@@ -42,7 +43,8 @@ class UniAgentLoop(AgentLoopBase):
             parser=config_dict.get("tool_parser", "qwen3_coder"),
         )
         self.env = self._init_env(config_dict["env"])
-        self.output_dir = Path(config_dict["log_dir"]) / self.run_id
+        log_dir = os.path.expandvars(os.path.expanduser(config_dict["log_dir"]))
+        self.output_dir = Path(log_dir) / self.run_id
         self.interaction = AgentInteraction(
             run_id=self.run_id,
             env=self.env,
@@ -120,7 +122,9 @@ class UniAgentLoop(AgentLoopBase):
         agent_loop_config_path = self.config.actor_rollout_ref.rollout.agent.agent_loop_config_path
         assert agent_loop_config_path is not None, "agent_loop_config_path is None"
         resolved_path = resolve_config_path(agent_loop_config_path)
-        config_dict = yaml.safe_load(Path(resolved_path).read_text())[0]
+        config = OmegaConf.load(resolved_path)
+        OmegaConf.resolve(config)
+        config_dict = OmegaConf.to_container(config, resolve=True)[0]
         # model config
         rollout_config = self.config.actor_rollout_ref.rollout
         max_model_len = (

@@ -2,6 +2,9 @@
 import os
 import shlex
 import uuid
+from pathlib import Path
+
+import yaml
 
 from uni_agent.interaction import AgentEnv, AgentEnvConfig
 from uni_agent.tools import ToolConfig
@@ -9,8 +12,14 @@ from uni_agent.tools import ToolConfig
 # create environment
 run_id = str(uuid.uuid4())
 impl = os.getenv("DEPLOYMENT", "vefaas").lower()
+agent_config_path = os.getenv("AGENT_CONFIG_PATH")
 
-if impl == "local":
+if agent_config_path:
+    agent_config = yaml.safe_load(Path(agent_config_path).expanduser().read_text())[0]
+    deployment_config = agent_config["env"]["deployment"]
+    env_config = agent_config["env"]
+    tools_config = agent_config["tools"]
+elif impl == "local":
     deployment_config = {
         "type": "local",
         "image": os.getenv("LOCAL_DEPLOYMENT_IMAGE", "python:3.12"),
@@ -51,21 +60,23 @@ elif impl == "":
 else:
     raise ValueError(f"Invalid environment implementation: {impl}")
 
-env_config = {
-    "deployment": deployment_config,
-    "env_variables": {
-        "PIP_PROGRESS_BAR": "off",
-    },
-}
+if not agent_config_path:
+    env_config = {
+        "deployment": deployment_config,
+        "env_variables": {
+            "PIP_PROGRESS_BAR": "off",
+        },
+    }
 env_config = AgentEnvConfig(**env_config)
 env = AgentEnv(run_id=run_id, env_config=env_config)
 env.start()
 
 # install tools in the environment
-tools_config = [
-    {"name": "execute_bash"},
-    {"name": "str_replace_editor"},
-]
+if not agent_config_path:
+    tools_config = [
+        {"name": "execute_bash"},
+        {"name": "str_replace_editor"},
+    ]
 tools = [ToolConfig(**tool_config).get_tool() for tool_config in tools_config]
 env.install_tools(tools)
 out = env.communicate("which str_replace_editor")

@@ -121,10 +121,11 @@ class AgentChatModel:
             rollout_cache["response_logprobs"] += token_output.log_probs
         if token_output.routed_experts is not None:
             rollout_cache["routed_experts"] = token_output.routed_experts
+        token_extra_fields = getattr(token_output, "extra_fields", None) or {}
         if not rollout_cache["extra_fields"]:
-            rollout_cache["extra_fields"].update(token_output.extra_fields)
+            rollout_cache["extra_fields"].update(token_extra_fields)
         else:
-            max_global_steps = token_output.extra_fields.get("max_global_steps", None)
+            max_global_steps = token_extra_fields.get("max_global_steps", None)
             if max_global_steps is not None:
                 rollout_cache["extra_fields"]["max_global_steps"] = max_global_steps
         response_str = await self.loop.run_in_executor(None, lambda: self.tokenizer.decode(response_ids))

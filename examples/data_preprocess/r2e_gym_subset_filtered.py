@@ -2,13 +2,16 @@
 import argparse
 import json
 import os
+from pathlib import Path
+from typing import Any
 
-from datasets import load_dataset
+from datasets import Dataset, load_dataset
+
+from dataset_utils import get_r2e_gym_sandbox_image_name, load_local_dataset
+from r2egym.commit_models.diff_classes import ParsedCommit
 
 impl = os.getenv("DEPLOYMENT", "vefaas").lower()
-if impl == "local":
-    raise NotImplementedError("Local deployment is not implemented yet")
-elif impl == "vefaas":
+if impl == "vefaas":
     PUB_VOLCES_IMG_URL_R2E = "enterprise-public-cn-beijing.cr.volces.com/r2e-gym-subset/{instance_number}:latest"
 
     def get_image_name(dataset_id: str, instance_id: str) -> str:
@@ -17,6 +20,12 @@ elif impl == "vefaas":
         assert len(parts) == 2
         instance_number = parts[1].lower()
         return PUB_VOLCES_IMG_URL_R2E.format(instance_number=instance_number)
+elif impl == "local":
+    LOCAL_R2E_IMAGE_TEMPLATE = os.getenv("LOCAL_R2E_IMAGE_TEMPLATE", "r2e-gym-subset/{instance_number}:latest")
+
+    def get_image_name(dataset_id: str, instance_id: str) -> str:
+        assert dataset_id == "r2e-gym-subset"
+        return get_r2e_gym_sandbox_image_name(instance_id, image_template=LOCAL_R2E_IMAGE_TEMPLATE)
 else:
     raise ValueError(f"Invalid deployment implementation: {impl}")
 
@@ -125,10 +134,30 @@ ln -s /root/r2e_tests /testbed/r2e_tests
 """.strip()
 
 
-def build_r2e_gym_verified():
-    from r2egym.commit_models.diff_classes import ParsedCommit
+DEFAULT_DATASET_DIR = "~/dataset/r2e-gym-subset-filtered"
+DEFAULT_SAVE_DIR = "~/dataset/verl/r2e-gym-subset-filtered"
 
-    def process_r2e_gym_subset(example):
+def get_patch(parsed_commit_content: str) -> str:
+    return ParsedCommit(**json.loads(parsed_commit_content)).get_patch()
+
+
+def load_r2e_gym_subset_filtered(dataset_dir: str, split: str) -> Dataset:
+    if impl == "local":
+        print(f"Loading local r2e-gym subset filtered dataset from {dataset_dir}...", flush=True)
+        return load_local_dataset(Path(dataset_dir), split)
+
+    data_source = "dyyyyyyyy/r2e-gym-subset-filtered"
+    print(f"Loading the {data_source} dataset from huggingface...", flush=True)
+    return load_dataset(data_source, split=split)
+
+
+def build_r2e_gym_dataset(
+    dataset_dir: str = DEFAULT_DATASET_DIR,
+    split: str = "train",
+    max_instances: int | None = None,
+) -> Dataset:
+
+    def process_r2e_gym_subset(example: dict[str, Any]):
         dataset_id = "r2e-gym-subset"
         repo_name = example["repo_name"]
         base_commit = example["commit_hash"]
@@ -138,7 +167,7 @@ def build_r2e_gym_verified():
         metadata = {
             "repo": repo_name,
             "instance_id": instance_id,
-            "patch": ParsedCommit(**json.loads(example["parsed_commit_content"])).get_patch(),
+            "patch": get_patch(example["parsed_commit_content"]),
             "expected_output_json": example["expected_output_json"],
         }
         sample = {
@@ -162,18 +191,30 @@ def build_r2e_gym_verified():
         }
         return sample
 
-    data_source = "dyyyyyyyy/r2e-gym-subset-filtered"
-    print(f"Loading the {data_source} dataset from huggingface...", flush=True)
-    dataset = load_dataset(data_source, split="train")
-    dataset = dataset.map(process_r2e_gym_subset, remove_columns=dataset.column_names)
-    return dataset
+    dataset = load_r2e_gym_subset_filtered(dataset_dir, split)
+    if max_instances is not None:
+        dataset = dataset.select(range(min(max_instances, len(dataset))))
+    return dataset.map(process_r2e_gym_subset, remove_columns=dataset.column_names)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--local-save-dir", default="~/data/swe_agent")
+    parser.add_argument("--dataset-dir", default=DEFAULT_DATASET_DIR)
+    parser.add_argument("--split", default="train")
+    parser.add_argument("--local-save-dir", default=DEFAULT_SAVE_DIR)
+    parser.add_argument("--output-name", default="r2e_gym_subset_filtered.parquet")
+    parser.add_argument("--max-instances", type=int, default=None)
 
     args = parser.parse_args()
 
-    sbv_dataset = build_r2e_gym_verified()
-    sbv_dataset.to_parquet(f"{args.local_save_dir}/r2e_gym_subset_filtered.parquet")
+    sbv_dataset = build_r2e_gym_dataset(
+        dataset_dir=args.dataset_dir,
+        split=args.split,
+        max_instances=args.max_instances,
+    )
+
+    save_dir = Path(args.local_save_dir).expanduser()
+    save_dir.mkdir(parents=True, exist_ok=True)
+    output_path = save_dir / args.output_name
+    sbv_dataset.to_parquet(str(output_path))
+    print(f"Saved {len(sbv_dataset)} examples to {output_path}")
