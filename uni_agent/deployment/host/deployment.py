@@ -7,9 +7,8 @@ import signal
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict
 from swerex.deployment.abstract import AbstractDeployment
 from swerex.deployment.hooks.abstract import CombinedDeploymentHook, DeploymentHook
 from swerex.exceptions import CommandTimeoutError, DeploymentNotStartedError
@@ -36,6 +35,7 @@ from swerex.runtime.abstract import (
 )
 
 from uni_agent.async_logging import get_logger
+from uni_agent.deployment.config import HostDeploymentConfig
 
 
 class HostRuntime(AbstractRuntime):
@@ -173,26 +173,6 @@ class HostRuntime(AbstractRuntime):
             except asyncio.TimeoutError:
                 self._process.kill()
         return CloseResponse()
-
-
-class HostDeploymentConfig(BaseModel):
-    """Configuration for host-local execution (no container)."""
-
-    type: Literal["host"] = "host"
-    """Discriminator for (de)serialization. Do not change."""
-    timeout: float = 60.0
-    """Default timeout for runtime operations."""
-    startup_timeout: float = 120.0
-    """Timeout for the initial bash session handshake.
-
-    During parameter-sync weight reloads, fork()/exec() and even the asyncio event loop can be
-    starved for tens of seconds.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    def get_deployment(self, run_id: str):
-        return HostDeployment.from_config(self, run_id)
 
 
 class HostDeployment(AbstractDeployment):

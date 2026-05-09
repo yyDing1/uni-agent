@@ -4,16 +4,13 @@ import time
 import uuid
 from pathlib import Path
 
+from r2egym.repo_analysis.execution_log_parser import decolor_dict_keys, parse_log_fn
+
 from uni_agent.async_logging import get_logger
 from uni_agent.interaction import AgentEnv
 from uni_agent.reward.base import AbstractRewardSpec
 from uni_agent.reward.registry import register_reward_spec
 from uni_agent.utils import auto_await
-
-try:
-    from r2egym.repo_analysis.execution_log_parser import decolor_dict_keys, parse_log_fn
-except ImportError:
-    print("r2egym not installed, skip")
 
 
 @register_reward_spec("r2e_gym")

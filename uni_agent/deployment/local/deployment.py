@@ -6,9 +6,8 @@ import socket
 import subprocess
 import uuid
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field
 from swerex.deployment.abstract import AbstractDeployment
 from swerex.deployment.hooks.abstract import CombinedDeploymentHook, DeploymentHook
 from swerex.exceptions import DeploymentNotStartedError
@@ -16,6 +15,7 @@ from swerex.runtime.abstract import Command, CreateBashSessionRequest, IsAliveRe
 from swerex.utils.wait import _wait_until_alive
 
 from uni_agent.async_logging import get_logger
+from uni_agent.deployment.config import LocalDeploymentConfig
 
 from .runtime import LocalRuntime, LocalRuntimeConfig
 
@@ -37,42 +37,6 @@ def _pick_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
-
-
-class LocalDeploymentConfig(BaseModel):
-    """Configuration for a local Docker/Podman sandbox."""
-
-    image: str = "python:3.12"
-    """Container image used for the sandbox."""
-    command: str = "python3 -m pip install -q swerex && python3 -m swerex.server --auth-token {token}"
-    """Command to run inside the sandbox."""
-    timeout: float = 60.0
-    """Timeout for runtime operations."""
-    startup_timeout: float = 180.0
-    """Timeout waiting for runtime to start."""
-    container_runtime: str = "docker"
-    """Container runtime executable, typically docker or podman."""
-    container_name: str | None = None
-    """Optional container name override."""
-    host: str | None = None
-    """Override the runtime host. Defaults to localhost outside containers and container IP inside containers."""
-    published_port: int | None = None
-    """Host port mapped to the sandbox runtime port. If unset, a free local port is chosen."""
-    runtime_port: int = 8000
-    """Port exposed by the swerex server inside the sandbox."""
-    network: str | None = None
-    """Optional Docker network to attach the sandbox to."""
-    shell: str = "/bin/bash"
-    """Shell executable used as the container entrypoint."""
-    extra_run_args: list[str] = Field(default_factory=list)
-    """Extra args appended to the container runtime `run` command."""
-
-    type: Literal["local"] = "local"
-    """Discriminator for (de)serialization/CLI. Do not change."""
-    model_config = ConfigDict(extra="forbid")
-
-    def get_deployment(self, run_id: str):
-        return LocalDeployment.from_config(self, run_id)
 
 
 class LocalDeployment(AbstractDeployment):

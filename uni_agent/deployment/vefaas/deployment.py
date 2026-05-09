@@ -4,22 +4,19 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import TYPE_CHECKING, Any, Self
 
-import volcenginesdkcore
-import volcenginesdkvefaas
-from dotenv import load_dotenv
-from pydantic import BaseModel, ConfigDict
 from swerex.deployment.abstract import AbstractDeployment
 from swerex.deployment.hooks.abstract import CombinedDeploymentHook, DeploymentHook
 from swerex.exceptions import DeploymentNotStartedError
 from swerex.runtime.abstract import Command, CreateBashSessionRequest, IsAliveResponse, UploadRequest
 from swerex.utils.wait import _wait_until_alive
-from volcenginesdkcore.rest import ApiException
 
 from uni_agent.async_logging import get_logger
+from uni_agent.deployment.config import VefaasDeploymentConfig
 
-from .runtime import RemoteRuntime, RemoteRuntimeConfig
+if TYPE_CHECKING:
+    from .runtime import RemoteRuntime
 
 PUB_VOLCES_IMG_URL_TEMPLATE = {
     "swe-bench": (
@@ -62,38 +59,14 @@ def get_vefaas_image_name(dataset_id: str, instance_id: str) -> str:
         )
 
 
-class VefaasDeploymentConfig(BaseModel):
-    """Configuration for VEFAAS deployment."""
-
-    image: str | None = None
-    """Docker image to use for the sandbox."""
-    command: str = "python3 -m swerex.server --auth-token {token}"
-    """Command to run in the sandbox with authentication token."""
-    timeout: float = 60.0
-    """Timeout for runtime operations."""
-    startup_timeout: float = 120.0
-    """Timeout waiting for runtime to start."""
-    function_id: str | None = None
-    """VEFAAS function ID."""
-    function_route: str | None = None
-    """VEFAAS function Route."""
-    proxy: str | None = None
-    """Proxy to use for the connection."""
-
-    type: Literal["vefaas"] = "vefaas"
-    """Discriminator for (de)serialization/CLI. Do not change."""
-    model_config = ConfigDict(extra="forbid")
-
-    def get_deployment(self, run_id: str):
-        return VefaasDeployment.from_config(self, run_id)
-
-
 class VefaasDeployment(AbstractDeployment):
     def __init__(self, run_id: str, **kwargs: Any):
+        from dotenv import load_dotenv
+
         load_dotenv()
         self.run_id = run_id
         self._config = VefaasDeploymentConfig(**kwargs)
-        self._runtime: RemoteRuntime | None = None
+        self._runtime: Any | None = None
         self.logger = get_logger("deployment", run_id)
         self._hooks = CombinedDeploymentHook()
         self._sandbox_id: str | None = None
@@ -133,6 +106,8 @@ class VefaasDeployment(AbstractDeployment):
         return str(uuid.uuid4())
 
     async def start(self, max_retries: int = 5):
+        from .runtime import RemoteRuntime, RemoteRuntimeConfig
+
         self.logger.info(
             f"Starting vefaas deployment,function_id = {self._config.function_id},image = {self._config.image}."
         )
@@ -247,7 +222,7 @@ class VefaasDeployment(AbstractDeployment):
         self._stopped = True
 
     @property
-    def runtime(self) -> RemoteRuntime:
+    def runtime(self) -> "RemoteRuntime":
         if self._runtime is None:
             raise DeploymentNotStartedError()
         return self._runtime
@@ -280,7 +255,10 @@ class VefaasDeployment(AbstractDeployment):
         self._stopped = True
 
 
-def get_vefaas_client(access_key: str, secret_key: str, region: str) -> volcenginesdkvefaas.VEFAASApi:
+def get_vefaas_client(access_key: str, secret_key: str, region: str):
+    import volcenginesdkcore
+    import volcenginesdkvefaas
+
     configuration = volcenginesdkcore.Configuration()
     configuration.ak = access_key
     configuration.sk = secret_key
@@ -295,12 +273,14 @@ def get_vefaas_client(access_key: str, secret_key: str, region: str) -> volcengi
 
 
 def create_sandbox(
-    client: volcenginesdkvefaas.VEFAASApi,
+    client: Any,
     function_id: str,
     image: str,
     command: str,
     logger: logging.Logger,
 ) -> str | None:
+    import volcenginesdkvefaas
+
     if image.startswith("swebench/"):
         image_name = image.replace("swebench/", "", 1)
         image = f"enterprise-public-cn-beijing.cr.volces.com/swe-bench/{image_name}"
@@ -329,11 +309,14 @@ def create_sandbox(
 
 
 def delete_sandbox(
-    client: volcenginesdkvefaas.VEFAASApi,
+    client: Any,
     function_id: str,
     sandbox_id: str,
     logger: logging.Logger,
 ):
+    import volcenginesdkvefaas
+    from volcenginesdkcore.rest import ApiException
+
     if sandbox_id is None:
         return
     try:

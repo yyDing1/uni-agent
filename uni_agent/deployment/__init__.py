@@ -1,19 +1,28 @@
-from typing import Annotated, TypeAlias
+from importlib import import_module
 
-from pydantic import Field
+from .config import DeployConfig, HostDeploymentConfig, LocalDeploymentConfig, VefaasDeploymentConfig
 
-from .host.deployment import HostDeploymentConfig
-from .local.deployment import LocalDeploymentConfig
-from .vefaas.deployment import VefaasDeploymentConfig
-
-DeployConfig: TypeAlias = Annotated[
-    VefaasDeploymentConfig | LocalDeploymentConfig | HostDeploymentConfig,
-    Field(discriminator="type"),
-]
+_LAZY_EXPORTS = {
+    "HostDeployment": ".host.deployment",
+    "LocalDeployment": ".local.deployment",
+    "VefaasDeployment": ".vefaas.deployment",
+}
 
 __all__ = [
     "DeployConfig",
     "HostDeploymentConfig",
     "LocalDeploymentConfig",
     "VefaasDeploymentConfig",
+    "HostDeployment",
+    "LocalDeployment",
+    "VefaasDeployment",
 ]
+
+
+def __getattr__(name: str):
+    if name in _LAZY_EXPORTS:
+        module = import_module(_LAZY_EXPORTS[name], __name__)
+        value = getattr(module, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
