@@ -95,4 +95,3 @@ DeployConfig: TypeAlias = Annotated[
     VefaasDeploymentConfig | LocalDeploymentConfig | HostDeploymentConfig,
     Field(discriminator="type"),
 ]
-
