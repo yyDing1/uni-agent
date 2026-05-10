@@ -20,8 +20,10 @@ logger.setLevel("INFO")
 async def run_sample(sample):
     run_id = str(uuid.uuid4())
     instance = sample["extra_info"]["tools_kwargs"]
-    env_config = {
-        "deployment": {
+    impl = os.getenv("DEPLOYMENT", "vefaas").lower()
+
+    if impl == "vefaas":
+        deployment_config = {
             "type": "vefaas",
             "image": instance["env"]["image"],
             "command": "curl -fsSL https://vefaas-swe.tos-cn-beijing.ivolces.com/swe-rex/install_1.4.0.sh | bash -s -- {token}",
@@ -29,7 +31,22 @@ async def run_sample(sample):
             "startup_timeout": 180.0,
             "function_id": os.getenv("VEFAAS_FUNCTION_ID"),
             "function_route": os.getenv("VEFAAS_FUNCTION_ROUTE"),
-        },
+        }
+    elif impl == "modal":
+        deployment_config = {
+            "type": "modal",
+            "image": instance["env"]["image"],
+            "startup_timeout": 600.0,
+            "runtime_timeout": 600.0,
+            "deployment_timeout": 3600.0,
+        }
+    elif impl == "":
+        raise ValueError("DEPLOYMENT must be set")
+    else:
+        raise ValueError(f"Invalid environment implementation: {impl}")
+
+    env_config = {
+        "deployment": deployment_config,
         "env_variables": {
             "PIP_PROGRESS_BAR": "off",
             "PIP_CACHE_DIR": "~/.cache/pip",
@@ -77,8 +94,9 @@ class TestEvalActor:
 
 def main():
     ray.init()
-    data_path = "/home/tiger/data/swe_agent/swe_rebench_filtered.parquet"
+    # data_path = "/home/tiger/data/swe_agent/swe_rebench_filtered.parquet"
     # data_path = "/home/tiger/data/swe_agent/r2e_gym_subset.parquet"
+    data_path = "/home/tiger/data/swe_agent/swe_bench_verified_modal.parquet"
     dataset = load_dataset("parquet", data_files=data_path, split="train")
     samples = dataset.to_list()
     workers = [TestEvalActor.remote() for _ in range(8)]

@@ -130,7 +130,7 @@ class ModalDeployment(AbstractDeployment):
         self._startup_timeout = startup_timeout
         self._sandbox: modal.Sandbox | None = None
         self._port = 8880
-        self._app: modal.App | None = modal.App.lookup("swe-rex", create_if_missing=True)
+        self._app: modal.App | None = None
         self._user = _get_modal_user()
         self._runtime_timeout = runtime_timeout
         self._deployment_timeout = deployment_timeout
@@ -183,16 +183,17 @@ class ModalDeployment(AbstractDeployment):
 
     async def get_modal_log_url(self) -> str:
         """Returns URL to modal logs."""
-        return f"https://modal.com/apps/{self._user}/main/deployed/{self.app.name}?activeTab=logs&taskId={await self.sandbox._get_task_id.aio()}"
+        task_id = await self.sandbox._get_task_id.aio()
+        return f"https://modal.com/apps/{self._user}/main/deployed/{self.app.name}?activeTab=logs&taskId={task_id}"
 
-    async def _start_once(self):
+    async def _start(self):
         """Starts the runtime once."""
         if self._runtime is not None and self._sandbox is not None:
             self.logger.warning("Deployment is already started. Ignoring duplicate start() call.")
             return
 
         if self._app is None:
-            self._app = modal.App.lookup("swe-rex", create_if_missing=True)
+            self._app = await modal.App.lookup.aio("swe-rex", create_if_missing=True)
 
         self.logger.info("Starting modal sandbox")
         self._hooks.on_custom_step("Starting modal sandbox")
@@ -231,7 +232,7 @@ class ModalDeployment(AbstractDeployment):
         last_error: Exception | None = None
         for retry in range(max_retries):
             try:
-                await self._start_once()
+                await self._start()
                 return
             except Exception as exc:
                 last_error = exc
