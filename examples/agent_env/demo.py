@@ -11,33 +11,10 @@ run_id = str(uuid.uuid4())
 impl = os.getenv("DEPLOYMENT", "vefaas").lower()
 
 if impl == "local":
-    deployment_config = {
-        "type": "local",
-        "image": os.getenv("LOCAL_DEPLOYMENT_IMAGE", "python:3.12"),
-        "command": os.getenv(
-            "LOCAL_DEPLOYMENT_COMMAND",
-            "python3 -m pip install -q swerex && python3 -m swerex.server --auth-token {token}",
-        ),
-        "timeout": 300.0,
-        "startup_timeout": 180.0,
-    }
-    local_runtime = os.getenv("LOCAL_CONTAINER_RUNTIME")
-    local_network = os.getenv("LOCAL_DEPLOYMENT_NETWORK")
-    local_host = os.getenv("LOCAL_DEPLOYMENT_HOST")
-    local_port = os.getenv("LOCAL_DEPLOYMENT_PORT")
-    if local_runtime:
-        deployment_config["container_runtime"] = local_runtime
-    if local_network:
-        deployment_config["network"] = local_network
-    if local_host:
-        deployment_config["host"] = local_host
-    if local_port:
-        deployment_config["published_port"] = int(local_port)
+    raise NotImplementedError("Local deployment is not implemented yet")
 elif impl == "vefaas":
-    access_key = os.getenv("VOLCE_ACCESS_KEY")
-    secret_key = os.getenv("VOLCE_SECRET_KEY")
-    assert access_key is not None, "VOLCE_ACCESS_KEY must be set"
-    assert secret_key is not None, "VOLCE_SECRET_KEY must be set"
+    assert os.getenv("VOLCE_ACCESS_KEY") is not None, "VOLCE_ACCESS_KEY must be set"
+    assert os.getenv("VOLCE_SECRET_KEY") is not None, "VOLCE_SECRET_KEY must be set"
     deployment_config = {
         "type": "vefaas",
         "image": "enterprise-public-2-cn-beijing.cr.volces.com/vefaas-public/python:3.12",
@@ -45,6 +22,14 @@ elif impl == "vefaas":
         "timeout": 300.0,
         "startup_timeout": 180.0,
         # "proxy": "xxxxxx",
+    }
+elif impl == "modal":
+    deployment_config = {
+        "type": "modal",
+        "image": "python:3.12",
+        "startup_timeout": 600.0,
+        "runtime_timeout": 300.0,
+        "deployment_timeout": 3600.0,
     }
 elif impl == "":
     raise ValueError("DEPLOYMENT must be set")

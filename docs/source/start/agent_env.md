@@ -18,23 +18,19 @@ The first step is to start a sandbox. You can do this either locally or on a rem
 
 ### Local deployment
 
-*Comming Soon~*
+**This implementation has not been completed and tested now.**
 
-<!-- Local deployment starts a sandbox as a Docker container on your machine, then connects to the `swerex` server inside that container. This is the easiest way to debug environment behavior before moving to a remote platform.
+Local deployment uses SWE-ReX's built-in local runtime. It runs commands on the current machine while preserving shell session state through `AgentEnv`.
 
-**Dependencies.** Install the runtime package and make sure a container runtime is available:
+**Dependencies.** Install the runtime package:
 
 ```bash
 pip install swerex
-docker version
 ```
-
-If you are already running this repo inside a container, make sure that inner process can talk to Docker too, for example by mounting `/var/run/docker.sock` or by using a Docker-in-Docker setup. If the sandbox should join a specific Docker network, set `network` in the config shown below.
 
 **Config and start.** Build the config, create the environment, and start it:
 
 ```python
-import os
 import uuid
 from uni_agent.interaction import AgentEnv, AgentEnvConfig
 
@@ -42,13 +38,6 @@ run_id = str(uuid.uuid4())
 env_config = {
     "deployment": {
         "type": "local",
-        "image": os.getenv("LOCAL_DEPLOYMENT_IMAGE", "python:3.12"),
-        "command": (
-            "python3 -m pip install -q swerex && "
-            "python3 -m swerex.server --auth-token {token}"
-        ),
-        "timeout": 300.0,
-        "startup_timeout": 180.0,
     },
     "env_variables": {
         "PIP_PROGRESS_BAR": "off",
@@ -60,16 +49,12 @@ env.start()
 ```
 
 - **`type`** must be `"local"`.
-- **`image`** is the local container image used for the sandbox.
-- **`command`** runs inside the container and should start `swerex.server`.
-- **`container_runtime`** can be set to `docker` or `podman` if you need to override the default.
-- **`network`** is optional and useful when the current process is itself running inside Docker.
 
 You can run the full demo from the repo root with:
 
 ```bash
 DEPLOYMENT=local python examples/agent_env/demo.py
-``` -->
+```
 
 ### Remote deployment (VEFAAS)
 

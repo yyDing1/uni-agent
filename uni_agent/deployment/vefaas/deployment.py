@@ -9,14 +9,14 @@ from typing import TYPE_CHECKING, Any, Self
 from swerex.deployment.abstract import AbstractDeployment
 from swerex.deployment.hooks.abstract import CombinedDeploymentHook, DeploymentHook
 from swerex.exceptions import DeploymentNotStartedError
-from swerex.runtime.abstract import Command, CreateBashSessionRequest, IsAliveResponse, UploadRequest
+from swerex.runtime.abstract import CreateBashSessionRequest, IsAliveResponse
 from swerex.utils.wait import _wait_until_alive
 
 from uni_agent.async_logging import get_logger
 from uni_agent.deployment.config import VefaasDeploymentConfig
 
 if TYPE_CHECKING:
-    from .runtime import RemoteRuntime
+    from uni_agent.deployment.remote_runtime import RemoteRuntime
 
 PUB_VOLCES_IMG_URL_TEMPLATE = {
     "swe-bench": (
@@ -105,8 +105,8 @@ class VefaasDeployment(AbstractDeployment):
     def _get_token(self) -> str:
         return str(uuid.uuid4())
 
-    async def start(self, max_retries: int = 5):
-        from .runtime import RemoteRuntime, RemoteRuntimeConfig
+    async def start(self, max_retries: int = 5) -> None:
+        from uni_agent.deployment.remote_runtime import RemoteRuntime, RemoteRuntimeConfig
 
         self.logger.info(
             f"Starting vefaas deployment,function_id = {self._config.function_id},image = {self._config.image}."
@@ -171,18 +171,6 @@ class VefaasDeployment(AbstractDeployment):
             CreateBashSessionRequest(startup_source=["/root/.bashrc"], startup_timeout=60)
         )
         # await self._post_setup()
-
-    async def copy_to_container(self, src: Path, tgt: Path):
-        # Make directory if necessary
-        await self._runtime.execute(Command(command=["mkdir", "-p", str(tgt.parent)]))
-
-        # Upload file to container
-        await self._runtime.upload(UploadRequest(source_path=str(src), target_path=str(tgt)))
-
-    @property
-    def tool_install_dir(self) -> Path:
-        """Directory inside the VEFAAS sandbox where tool scripts are installed."""
-        return Path("/usr/local/bin")
 
     async def stop(self):
         # Prevent duplicate stops

@@ -8,7 +8,9 @@ from swerex.exceptions import BashIncorrectSyntaxError, CommandTimeoutError
 from swerex.runtime.abstract import (
     BashAction,
     BashInterruptAction,
+    Command,
     ReadFileRequest,
+    UploadRequest,
     WriteFileRequest,
 )
 
@@ -36,6 +38,9 @@ class AgentEnvConfig(BaseModel):
         default=None, description="Optional environment variables to set after start"
     )
     post_setup_cmd: str | None = Field(default=None, description="Command to run after environment startup")
+    tool_install_dir: Path = Field(
+        default=Path("/usr/local/bin"), description="Directory where tool scripts are installed"
+    )
     model_config = ConfigDict(extra="forbid")
 
 
@@ -56,6 +61,7 @@ class AgentEnv:
         self.deployment = env_config.deployment.get_deployment(run_id)
         self.env_variables = env_config.env_variables
         self.post_setup_cmd = env_config.post_setup_cmd
+        self.tool_install_dir = env_config.tool_install_dir
         self.logger = get_logger("environment", run_id)
 
     @auto_await
@@ -73,14 +79,15 @@ class AgentEnv:
 
     @auto_await
     async def install_tools(self, tools: list[AbstractTool]) -> None:
-        install_dir = Path(self.deployment.tool_install_dir)
+        install_dir = self.tool_install_dir
+        await self.communicate(f"export PATH={shlex.quote(install_dir.as_posix())}:$PATH", check="raise")
         for tool in tools:
             tool_name = tool.name
             local_tool_path = tool.local_path
             assert local_tool_path.is_file(), f"Tool {tool_name} not found"
 
             container_tool_path = install_dir / tool_name
-            await self.deployment.copy_to_container(
+            await self.copy_to_container(
                 src=local_tool_path,
                 tgt=container_tool_path,
             )
@@ -91,6 +98,11 @@ class AgentEnv:
             # check if tool is installed
             await self.communicate(f"which {tool_name}", check="raise", error_msg=f"Failed to install tool {tool_name}")
             self.logger.info(f"Tool {tool_name} successfully installed")
+
+    @auto_await
+    async def copy_to_container(self, src: Path, tgt: Path) -> None:
+        await self.deployment.runtime.execute(Command(command=["mkdir", "-p", str(tgt.parent)]))
+        await self.deployment.runtime.upload(UploadRequest(source_path=str(src), target_path=str(tgt)))
 
     @auto_await
     async def close(self) -> None:

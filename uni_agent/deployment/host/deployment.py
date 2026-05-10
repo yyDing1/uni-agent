@@ -4,7 +4,6 @@ import asyncio
 import os
 import shutil
 import signal
-import tempfile
 import uuid
 from pathlib import Path
 from typing import Any, Self
@@ -184,7 +183,6 @@ class HostDeployment(AbstractDeployment):
         self._runtime: HostRuntime | None = None
         self.logger = get_logger("host-deployment", run_id)
         self._hooks = CombinedDeploymentHook()
-        self._tool_dir: Path | None = None
         self._stopped = False
 
     def add_hook(self, hook: DeploymentHook):
@@ -202,11 +200,7 @@ class HostDeployment(AbstractDeployment):
         return await self._runtime.is_alive(timeout=timeout)
 
     async def start(self, max_retries: int = 5):
-        self._tool_dir = Path(tempfile.mkdtemp(prefix=f"uni-agent-host-{self.run_id[:8]}-"))
-        self.logger.info(f"Created tool directory: {self._tool_dir}")
-
         env = dict(os.environ)
-        env["PATH"] = f"{self._tool_dir}:{env.get('PATH', '')}"
 
         self._runtime = HostRuntime(run_id=self.run_id, env=env)
         await self._runtime.create_session(
@@ -226,26 +220,8 @@ class HostDeployment(AbstractDeployment):
                 self.logger.error(f"Failed to close host runtime: {exc}")
             self._runtime = None
 
-        if self._tool_dir and self._tool_dir.exists():
-            try:
-                shutil.rmtree(self._tool_dir)
-            except Exception as exc:
-                self.logger.error(f"Failed to clean up tool directory: {exc}")
-
         self._stopped = True
         self.logger.info("Host deployment stopped")
-
-    async def copy_to_container(self, src: Path, tgt: Path):
-        tgt.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, tgt)
-        self.logger.debug(f"Copied tool {src.name} -> {tgt}")
-
-    @property
-    def tool_install_dir(self) -> Path:
-        """Directory on the host where tool scripts are installed. Already on PATH."""
-        if self._tool_dir is None:
-            raise DeploymentNotStartedError()
-        return self._tool_dir
 
     @property
     def runtime(self) -> HostRuntime:
