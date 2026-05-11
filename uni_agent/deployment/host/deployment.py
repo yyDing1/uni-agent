@@ -204,19 +204,38 @@ class HostRuntime(AbstractRuntime):
             self._dead = True
 
     def _signal_foreground_child(self, sig: int) -> bool:
-        """Send `sig` to bash's direct child processes (its foreground
-        command). With `set -m`, signaling bash itself would either be
-        ignored or kill the shell; we want to kill only the user command.
-        Returns True if at least one signal was delivered."""
+        """Send `sig` to bash's foreground job. With `set -m`, bash places
+        each job (including a multi-process pipeline) in its own process
+        group, so we look up each direct child's pgid and signal the group.
+        Signaling bash itself would either be ignored or kill the shell;
+        we want to terminate only the user command, including every stage
+        of a pipeline. Returns True if at least one group was signaled."""
         if self._process is None or self._process.returncode is not None:
             return False
+        signaled_pgids: set[int] = set()
+        delivered = False
         for pid in _list_child_pids(self._process.pid):
             try:
-                os.kill(pid, sig)
-                return True
+                pgid = os.getpgid(pid)
             except ProcessLookupError:
                 continue
-        return False
+            if pgid in signaled_pgids or pgid == self._process.pid:
+                # Skip duplicates and refuse to signal bash's own group,
+                # which would happen if job control somehow wasn't enabled.
+                continue
+            signaled_pgids.add(pgid)
+            try:
+                os.killpg(pgid, sig)
+                delivered = True
+            except (ProcessLookupError, PermissionError):
+                # Fall back to per-pid kill if the group is gone or we
+                # don't have permission for killpg.
+                try:
+                    os.kill(pid, sig)
+                    delivered = True
+                except ProcessLookupError:
+                    continue
+        return delivered
 
     async def execute(self, command: Command) -> CommandResponse:
         proc = await asyncio.create_subprocess_exec(

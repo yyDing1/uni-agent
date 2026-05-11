@@ -94,6 +94,31 @@ async def test_interrupt_unblocks_running_command(runtime: HostRuntime) -> None:
 
 
 @pytest.mark.asyncio
+async def test_interrupt_kills_entire_pipeline(runtime: HostRuntime) -> None:
+    """A pipeline (e.g. `sleep 30 | cat | cat`) spawns multiple processes
+    in one process group. Interrupt must signal the whole group, otherwise
+    bash stays blocked waiting for the surviving stages to finish."""
+    result: dict[str, object] = {}
+
+    async def long_pipeline() -> None:
+        result["obs"] = await runtime.run_in_session(
+            BashAction(command="sleep 30 | cat | cat", timeout=15)
+        )
+
+    task = asyncio.create_task(long_pipeline())
+    await asyncio.sleep(0.3)
+    await runtime.run_in_session(BashInterruptAction(timeout=5))
+    await asyncio.wait_for(task, timeout=5)
+
+    obs = result["obs"]
+    assert obs.exit_code != 0, "pipeline should not exit cleanly after SIGINT"
+
+    r = await runtime.run_in_session(BashAction(command="echo still_alive", timeout=10))
+    assert r.exit_code == 0
+    assert r.output.strip() == "still_alive"
+
+
+@pytest.mark.asyncio
 async def test_dead_session_raises_instead_of_silent_rebuild(runtime: HostRuntime) -> None:
     """If the bash process exits, the next call must surface the failure so
     the upper layer can fail the episode, rather than silently respawning a
