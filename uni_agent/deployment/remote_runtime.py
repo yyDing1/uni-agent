@@ -57,8 +57,6 @@ class RemoteRuntimeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     def get_runtime(self) -> AbstractRuntime:
-        from swerex.runtime.remote import RemoteRuntime
-
         return RemoteRuntime.from_config(self)
 
 
