@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import pickle
 import uuid
 from pathlib import Path
@@ -42,7 +43,11 @@ class UniAgentLoop(AgentLoopBase):
             parser=config_dict.get("tool_parser", "qwen3_coder"),
         )
         self.env = self._init_env(config_dict["env"])
-        self.output_dir = Path(config_dict["log_dir"]) / self.run_id
+        # Optional batch tag (e.g. "step_000") for grouping rollouts in offline analysis.
+        # Set per-step by the inference/training driver via os.environ.
+        batch_tag = os.environ.get("UNI_AGENT_BATCH_TAG", "").strip()
+        log_root = Path(config_dict["log_dir"])
+        self.output_dir = (log_root / batch_tag / self.run_id) if batch_tag else (log_root / self.run_id)
         self.interaction = AgentInteraction(
             run_id=self.run_id,
             env=self.env,

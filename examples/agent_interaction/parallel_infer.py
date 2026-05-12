@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import time
 from pathlib import Path
 
 import numpy as np
@@ -66,6 +67,44 @@ def init_config(args: argparse.Namespace) -> DictConfig:
     return config
 
 
+def _build_batch(samples: list, n_per_prompt: int) -> DataProto:
+    """Pack a list of sample dicts into a DataProto and repeat each prompt N times (GRPO-style)."""
+    return DataProto(
+        non_tensor_batch={
+            "raw_prompt": np.array([s["prompt"] for s in samples], dtype=object),
+            "agent_name": np.array([s["agent_name"] for s in samples], dtype=object),
+            "tools_kwargs": np.array([s["extra_info"]["tools_kwargs"] for s in samples], dtype=object),
+        },
+        meta_info={"validate": True},
+    ).repeat(n_per_prompt)
+
+
+def _select_step_samples(
+    all_samples: list,
+    step_idx: int,
+    train_batch_size: int,
+    rng: np.random.Generator,
+    shuffle: bool,
+) -> list:
+    """Pick `train_batch_size` prompts for this step.
+
+    With shuffle on, samples are drawn without replacement from the full dataset
+    via a freshly permuted index per step (mimics dataloader behavior).
+    Without shuffle, take a sequential slice and wrap around if needed.
+    """
+    if shuffle:
+        # Permute fresh per step so each batch has a distinct, reproducible draw
+        idx = rng.permutation(len(all_samples))[:train_batch_size]
+    else:
+        start = (step_idx * train_batch_size) % len(all_samples)
+        end = start + train_batch_size
+        if end <= len(all_samples):
+            idx = np.arange(start, end)
+        else:
+            idx = np.concatenate([np.arange(start, len(all_samples)), np.arange(0, end - len(all_samples))])
+    return [all_samples[int(i)] for i in idx]
+
+
 def run_inference(args: argparse.Namespace):
     """Run the inference pipeline using the provided arguments."""
     # 1. Init Ray
@@ -79,37 +118,67 @@ def run_inference(args: argparse.Namespace):
     # 3. Load dataset
     data_path = os.path.expanduser(args.data_path)
     logger.info(f"Loading dataset from: {data_path}")
-    samples = load_dataset("parquet", data_files=data_path, split="train").to_list()
+    all_samples = load_dataset("parquet", data_files=data_path, split="train").to_list()
 
-    # Limit number of samples (-1 = no limit)
+    # Optional global cap; keeps the full pool when 0 / negative
     if args.max_samples > 0:
-        samples = samples[: args.max_samples]
-        logger.info("Using first %d samples (--max-samples=%d)", len(samples), args.max_samples)
+        all_samples = all_samples[: args.max_samples]
+        logger.info("Using first %d samples (--max-samples=%d)", len(all_samples), args.max_samples)
 
-    # 4. Prepare batch data
-    logger.info("Preparing data batch...")
-    batch = DataProto(
-        non_tensor_batch={
-            "raw_prompt": np.array([sample["prompt"] for sample in samples], dtype=object),
-            "agent_name": np.array([sample["agent_name"] for sample in samples], dtype=object),
-            "tools_kwargs": np.array([sample["extra_info"]["tools_kwargs"] for sample in samples], dtype=object),
-        },
-        meta_info={"validate": True},
-    ).repeat(config.actor_rollout_ref.rollout.n)
+    # Resolve effective per-step batch size
+    if args.train_batch_size > 0:
+        train_batch_size = args.train_batch_size
+    else:
+        # Fallback: whole-dataset single batch (legacy behavior)
+        train_batch_size = len(all_samples)
 
-    # 5. Generate sequences
-    logger.info("Starting sequence generation...")
+    n_per_prompt = config.actor_rollout_ref.rollout.n
     size_divisor = config.actor_rollout_ref.rollout.agent.num_workers
-    batch_padded, pad_size = pad_dataproto_to_divisor(batch, size_divisor)
-    output_padded = agent_loop_manager.generate_sequences(batch_padded)
-    output = unpad_dataproto(output_padded, pad_size=pad_size)
+    rng = np.random.default_rng(args.seed)
 
-    # 6. Process results
-    rm_scores = output.batch["rm_scores"].sum(dim=-1).tolist()
-    mean_score = np.mean(rm_scores)
+    logger.info(
+        "Running %d step(s): train_batch_size=%d prompts x n=%d responses = %d trajectories/step "
+        "(num_workers=%d)",
+        args.num_steps,
+        train_batch_size,
+        n_per_prompt,
+        train_batch_size * n_per_prompt,
+        size_divisor,
+    )
 
-    logger.info(f"Generation completed. Mean RM Score: {mean_score:.4f}")
-    print(f"\n=> Mean RM Score: {mean_score:.4f}\n")
+    all_step_scores: list[float] = []
+    for step_idx in range(args.num_steps):
+        batch_tag = f"step_{step_idx:03d}"
+        # Tell uni_agent.agent_loop where to place per-rollout artifacts so they
+        # are pre-grouped by batch on disk -- analyzer just globs step_*/*.
+        os.environ["UNI_AGENT_BATCH_TAG"] = batch_tag
+
+        step_samples = _select_step_samples(
+            all_samples=all_samples,
+            step_idx=step_idx,
+            train_batch_size=train_batch_size,
+            rng=rng,
+            shuffle=args.shuffle,
+        )
+        logger.info("[%s] Preparing batch from %d prompts...", batch_tag, len(step_samples))
+        batch = _build_batch(step_samples, n_per_prompt=n_per_prompt)
+        batch_padded, pad_size = pad_dataproto_to_divisor(batch, size_divisor)
+
+        t0 = time.time()
+        logger.info("[%s] Starting sequence generation...", batch_tag)
+        output_padded = agent_loop_manager.generate_sequences(batch_padded)
+        wall = time.time() - t0
+        output = unpad_dataproto(output_padded, pad_size=pad_size)
+
+        rm_scores = output.batch["rm_scores"].sum(dim=-1).tolist()
+        mean_score = float(np.mean(rm_scores))
+        all_step_scores.append(mean_score)
+        logger.info("[%s] Done in %.1fs. Mean RM Score: %.4f", batch_tag, wall, mean_score)
+        print(f"\n=> [{batch_tag}] wall={wall:.1f}s | Mean RM Score: {mean_score:.4f}\n")
+
+    overall_mean = float(np.mean(all_step_scores)) if all_step_scores else 0.0
+    logger.info("All %d steps completed. Overall mean RM Score: %.4f", args.num_steps, overall_mean)
+    print(f"\n=> Overall Mean RM Score across {args.num_steps} steps: {overall_mean:.4f}\n")
 
 
 def main():
@@ -142,13 +211,38 @@ def main():
     parser.add_argument("--response-length", type=int, default=65536, help="Maximum response length (tokens).")
     parser.add_argument("--temperature", type=float, default=0.8, help="Sampling temperature.")
     parser.add_argument("--top-p", type=float, default=0.9, help="Sampling top-p (nucleus sampling).")
-    parser.add_argument("--n", type=int, default=1, help="Number of rollouts per prompt (N).")
+    parser.add_argument("--n", type=int, default=1, help="Number of rollouts per prompt (N), GRPO group size.")
     parser.add_argument(
         "--max-samples",
         type=int,
         default=-1,
-        help="Max number of samples to run (default -1). Use -1 for no limit (full dataset).",
+        help="Cap the dataset pool size before stepping. Use -1 for no limit (full dataset).",
     )
+
+    # Multi-step batch driver: emulate training-style batches so we can sample
+    # many batches and analyze tail latency per batch.
+    parser.add_argument(
+        "--train-batch-size",
+        type=int,
+        default=-1,
+        help=(
+            "Prompts per step (matches training's train_prompt_bsz). "
+            "Total trajectories per step = train_batch_size * n. "
+            "Use -1 to fall back to legacy behavior (entire pool as one batch)."
+        ),
+    )
+    parser.add_argument(
+        "--num-steps",
+        type=int,
+        default=1,
+        help="Number of sequential batches (steps) to run. Each step is fully completed before the next starts.",
+    )
+    parser.add_argument(
+        "--shuffle",
+        action="store_true",
+        help="Reshuffle the dataset per step. Without this flag, sequential slices (wrapping if needed) are used.",
+    )
+    parser.add_argument("--seed", type=int, default=42, help="RNG seed for --shuffle sampling.")
 
     # Execution / Engine configs
     parser.add_argument(
