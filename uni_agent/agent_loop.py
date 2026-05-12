@@ -109,6 +109,8 @@ class UniAgentLoop(AgentLoopBase):
         save_content = {
             "trajectory": [s.model_dump() for s in interaction_result["trajectory"]],
             "execution_time": interaction_result["execution_time"],
+            "start_ts": interaction_result.get("start_ts"),
+            "end_ts": interaction_result.get("end_ts"),
             "messages": interaction_result["messages"],
             "metrics": interaction_result.get("metrics", {}),
         }

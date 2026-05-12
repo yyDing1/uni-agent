@@ -25,6 +25,17 @@ class StepOutput(BaseModel):
     done: bool = False
     exit_reason: str = ""
 
+    # Per-turn timing breakdown for offline tail-latency analysis.
+    # All wall-clock fields use time.time() epoch seconds so they are
+    # comparable across workers; durations use perf_counter() deltas.
+    step_start_ts: float | None = None
+    step_end_ts: float | None = None
+    llm_time: float | None = None
+    tool_name: str | None = None
+    tool_time: float | None = None  # env.run_action exec duration; None if LLM exited early
+    tool_outcome: str | None = None  # "ok" | "timeout" | "terminal_dead" | "syntax_error" | "skipped"
+    tool_recovery_time: float | None = None  # interrupt+probe overhead on timeout, 0.0 on success
+
 
 def fast_deepcopy(obj):
     return orjson.loads(orjson.dumps(obj))
@@ -54,17 +65,20 @@ class AgentInteraction:
     async def step(self, step_idx: int):
         # step index start from 1
         step_output = StepOutput(step_idx=step_idx)
+        step_output.step_start_ts = time.time()
         self.logger.info(f"{'=' * 25} STEP {step_idx} {'=' * 25}")
 
         # step 1: prepare template
         self.logger.info(f"🤖 MODEL INPUT\n{self.messages[-1]['content']}")
 
         # step 2: generate response and update rollout cache
+        llm_t0 = time.perf_counter()
         try:
             model_output, rollout_cache, generation_info = await self.model.query(
                 messages=self.messages,
                 rollout_cache=self.rollout_cache,
             )
+            step_output.llm_time = time.perf_counter() - llm_t0
             step_output.response = model_output
             self.logger.info(
                 f"Prompt Tokens: {generation_info['prompt_tokens']}, "
@@ -72,6 +86,9 @@ class AgentInteraction:
             )
             self.logger.debug(f"Model Output:\n{model_output}")
         except MaxTokenExceededError as e:
+            step_output.llm_time = time.perf_counter() - llm_t0
+            step_output.tool_outcome = "skipped"
+            step_output.step_end_ts = time.time()
             self.logger.error(str(e))
             step_output.exit_reason = "token_limit"
             step_output.done = True
@@ -94,6 +111,8 @@ class AgentInteraction:
             self.messages.append(user_message)  # error message
             self.rollout_cache = await self.model.append_messages_to_rollout_cache([user_message], self.rollout_cache)
             step_output.exit_reason = "format_error"
+            step_output.tool_outcome = "skipped"
+            step_output.step_end_ts = time.time()
             model_output_preview = "\n".join(model_output.splitlines()[:20])
             self.logger.error(
                 f"Fail to parse thought and action from model output.\n"
@@ -107,6 +126,7 @@ class AgentInteraction:
         action_cmd = self.tools_manager.get_tool_bash_command(tool_call)
         step_output.thought = content
         step_output.action = action_cmd
+        step_output.tool_name = tool_call.function.name
         self.logger.info(f"💭 THOUGHT:\n{content}")
         self.logger.info(f"🎬 ACTION:\n{action_cmd}")
         execution_t0 = time.perf_counter()
@@ -120,6 +140,7 @@ class AgentInteraction:
                 )
                 step_output.observation = observation
             except ActionTimeoutError as e:
+                self._record_tool_stats(step_output)
                 self.logger.error(str(e))
                 user_message = {"role": "user", "content": str(e)}
                 self.messages.append(user_message)
@@ -127,6 +148,8 @@ class AgentInteraction:
                     [user_message], self.rollout_cache
                 )
                 step_output.exit_reason = "timeout_error"
+                step_output.execution_time = time.perf_counter() - execution_t0
+                step_output.step_end_ts = time.time()
                 self.logger.info(f"Existing timeout budget: {self.timeout_budget}")
                 if self.timeout_budget > 0:
                     self.timeout_budget -= 1
@@ -135,6 +158,7 @@ class AgentInteraction:
                     step_output.done = True
                     return step_output
             except ActionIncorrectSyntaxError as e:
+                self._record_tool_stats(step_output)
                 self.logger.error(str(e))
                 user_message = {"role": "user", "content": str(e)}
                 self.messages.append(user_message)
@@ -142,8 +166,11 @@ class AgentInteraction:
                     [user_message], self.rollout_cache
                 )
                 step_output.exit_reason = "syntax_error"
+                step_output.execution_time = time.perf_counter() - execution_t0
+                step_output.step_end_ts = time.time()
                 return step_output
             except TerminalNotAliveError as e:
+                self._record_tool_stats(step_output)
                 self.logger.error(str(e))
                 user_message = {"role": "user", "content": str(e)}
                 self.messages.append(user_message)
@@ -151,12 +178,16 @@ class AgentInteraction:
                     [user_message], self.rollout_cache
                 )
                 step_output.exit_reason = "terminal_not_alive"
+                step_output.execution_time = time.perf_counter() - execution_t0
+                step_output.step_end_ts = time.time()
                 step_output.done = True
                 return step_output
 
-        # step 5: finalize step output
+        # step 5: finalize step output (success path)
+        self._record_tool_stats(step_output)
         execution_time = time.perf_counter() - execution_t0
         step_output.execution_time = execution_time
+        step_output.step_end_ts = time.time()
         if tool_call.function.name in ["finish", "submit"]:
             step_output.done = True
             step_output.exit_reason = "finished"
@@ -165,6 +196,13 @@ class AgentInteraction:
             step_output.exit_reason = "completed"
 
         return step_output
+
+    def _record_tool_stats(self, step_output: "StepOutput") -> None:
+        """Copy env.run_action's per-call timing breakdown onto step_output."""
+        stats = getattr(self.env, "last_action_stats", None) or {}
+        step_output.tool_time = stats.get("exec_time")
+        step_output.tool_outcome = stats.get("outcome")
+        step_output.tool_recovery_time = stats.get("recovery_time", 0.0)
 
     @auto_await
     async def run(self):
@@ -179,6 +217,7 @@ class AgentInteraction:
 
         done = False
         step_idx = 0
+        start_ts = time.time()
         execution_time = time.perf_counter()
         while not done:
             # we start from 1
@@ -200,10 +239,13 @@ class AgentInteraction:
                 break
 
         execution_time = time.perf_counter() - execution_time
+        end_ts = time.time()
         result = {
             "trajectory": self.trajectory,
             "rollout_cache": self.rollout_cache,
             "execution_time": execution_time,
+            "start_ts": start_ts,
+            "end_ts": end_ts,
             "messages": self.messages,
         }
         return result

@@ -1,5 +1,6 @@
 import re
 import shlex
+import time
 from pathlib import Path, PurePath
 from typing import Literal
 
@@ -63,6 +64,13 @@ class AgentEnv:
         self.post_setup_cmd = env_config.post_setup_cmd
         self.tool_install_dir = env_config.tool_install_dir
         self.logger = get_logger("environment", run_id)
+        # Populated by run_action() so callers can read per-call timing breakdown
+        # without changing the return type. Fields:
+        #   outcome:           "ok" | "timeout" | "terminal_dead" | "syntax_error"
+        #   exec_time:         duration of the actual command execution (until success or timeout)
+        #   recovery_time:     interrupt + probe overhead on timeout; 0 otherwise
+        # Consumers should snapshot this dict immediately after run_action() returns.
+        self.last_action_stats: dict = {}
 
     @auto_await
     async def start(self, max_retries: int = 5) -> None:
@@ -113,8 +121,12 @@ class AgentEnv:
 
     @auto_await
     async def run_action(self, action_cmd: str, action_timeout: int, max_observation_length: int = 100_000) -> str:
+        exec_t0 = time.perf_counter()
+        self.last_action_stats = {"outcome": None, "exec_time": None, "recovery_time": 0.0}
         try:
             observation = await self.communicate(input=action_cmd, timeout=action_timeout, check="ignore")
+            self.last_action_stats["exec_time"] = time.perf_counter() - exec_t0
+            self.last_action_stats["outcome"] = "ok"
             observation = re.sub(r"\x1b\[[0-9;]*m|\r", "", observation)
             if observation.strip() == "":
                 observation = "Your command ran successfully and did not produce any output."
@@ -130,6 +142,9 @@ class AgentEnv:
                 observation = f"Observation:\n{observation}"
             return observation
         except CommandTimeoutError:
+            # Command itself hit action_timeout; split exec vs recovery for tail analysis.
+            self.last_action_stats["exec_time"] = time.perf_counter() - exec_t0
+            recovery_t0 = time.perf_counter()
             # interrupt timeout action
             # if terminal is still alive after interrupt, raise error
             try:
@@ -148,11 +163,15 @@ class AgentEnv:
                         terminal_alive = True
                         break
                 if not terminal_alive:
+                    self.last_action_stats["recovery_time"] = time.perf_counter() - recovery_t0
+                    self.last_action_stats["outcome"] = "terminal_dead"
                     error_message = "Terminal did not respond to health checks"
                     self.logger.critical(error_message)
                     raise TerminalNotAliveError(error_message) from None
 
             # if terminal is still alive, return timeout observation
+            self.last_action_stats["recovery_time"] = time.perf_counter() - recovery_t0
+            self.last_action_stats["outcome"] = "timeout"
             observation = (
                 f"The command '{action_cmd}' was cancelled because it took more than {action_timeout} seconds. "
                 "Please try a different command that completes more quickly. Note: A common source of this error is "
@@ -163,6 +182,8 @@ class AgentEnv:
 
         except BashIncorrectSyntaxError as e:
             # this should not happen, so add critical logs here
+            self.last_action_stats["exec_time"] = time.perf_counter() - exec_t0
+            self.last_action_stats["outcome"] = "syntax_error"
             self.logger.error("Action command has incorrect syntax")
             error_message = (
                 "Your bash command contained syntax errors and was NOT executed. "
