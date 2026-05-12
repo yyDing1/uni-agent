@@ -90,7 +90,7 @@ class AgentInteraction:
             else:
                 content, tool_calls = await self.tools_manager.parse_action(model_output=model_output)
         except FunctionCallFormatError as e:
-            user_message = {"role": "user", "content": str(e)}
+            user_message = {"role": "tool", "content": str(e)}
             self.messages.append(user_message)  # error message
             self.rollout_cache = await self.model.append_messages_to_rollout_cache([user_message], self.rollout_cache)
             step_output.exit_reason = "format_error"
@@ -121,7 +121,7 @@ class AgentInteraction:
                 step_output.observation = observation
             except ActionTimeoutError as e:
                 self.logger.error(str(e))
-                user_message = {"role": "user", "content": str(e)}
+                user_message = {"role": "tool", "content": str(e)}
                 self.messages.append(user_message)
                 self.rollout_cache = await self.model.append_messages_to_rollout_cache(
                     [user_message], self.rollout_cache
@@ -136,7 +136,7 @@ class AgentInteraction:
                     return step_output
             except ActionIncorrectSyntaxError as e:
                 self.logger.error(str(e))
-                user_message = {"role": "user", "content": str(e)}
+                user_message = {"role": "tool", "content": str(e)}
                 self.messages.append(user_message)
                 self.rollout_cache = await self.model.append_messages_to_rollout_cache(
                     [user_message], self.rollout_cache
@@ -145,7 +145,7 @@ class AgentInteraction:
                 return step_output
             except TerminalNotAliveError as e:
                 self.logger.error(str(e))
-                user_message = {"role": "user", "content": str(e)}
+                user_message = {"role": "tool", "content": str(e)}
                 self.messages.append(user_message)
                 self.rollout_cache = await self.model.append_messages_to_rollout_cache(
                     [user_message], self.rollout_cache

@@ -199,7 +199,7 @@ class ModalDeployment(AbstractDeployment):
         if self._app is None:
             self._app = await modal.App.lookup.aio("swe-rex", create_if_missing=True)
 
-        self.logger.info("Starting modal sandbox with image {self._image_name}")
+        self.logger.info(f"Starting modal sandbox with image {self._image_name}")
         self._hooks.on_custom_step("Starting modal sandbox")
         t0 = time.time()
         token = self._get_token()

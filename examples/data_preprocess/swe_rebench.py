@@ -8,7 +8,14 @@ impl = os.getenv("DEPLOYMENT", "vefaas").lower()
 if impl == "local":
     raise NotImplementedError("Local deployment is not implemented yet")
 elif impl == "vefaas":
-    from uni_agent.deployment.vefaas.deployment import get_vefaas_image_name
+    from uni_agent.deployment.vefaas.deployment import get_vefaas_image_name as get_image_name
+elif impl == "modal":
+    def get_image_name(dataset_id, instance_id):
+        parts = instance_id.split("__")
+        assert len(parts) == 2
+        project_name = parts[0].lower()
+        instance_number = parts[1].lower()
+        return f"swerebench/sweb.eval.x86_64.{project_name}_1776_{instance_number}"
 else:
     raise ValueError(f"Invalid deployment implementation: {impl}")
 
@@ -115,7 +122,7 @@ def build_swe_rebench():
             "test_cmd": example["install_config"]["test_cmd"],
         }
         instance_id = metadata["instance_id"]
-        image_name = get_vefaas_image_name(dataset_id, instance_id)
+        image_name = get_image_name(dataset_id, instance_id)
         reset_script = ""
         sample = {
             "prompt": [
@@ -152,4 +159,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     sbv_dataset = build_swe_rebench()
-    sbv_dataset.to_parquet(f"{args.local_save_dir}/swe_rebench_filtered.parquet")
+    sbv_dataset.to_parquet(f"{args.local_save_dir}/swe_rebench_filtered_{impl}.parquet")

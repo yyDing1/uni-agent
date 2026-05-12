@@ -108,7 +108,11 @@ class AgentEnv:
     async def close(self) -> None:
         """Shutdown SWE-ReX deployment etc."""
         self.logger.info("Beginning environment shutdown...")
-        await self.deployment.stop()
+        try:
+            await self.deployment.stop()
+        except Exception as e:
+            self.logger.error(f"Failed to stop environment deployment: {e}")
+            return
         self.logger.info("Environment shutdown completed")
 
     @auto_await
