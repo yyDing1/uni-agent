@@ -356,10 +356,10 @@ class LocalDeployment(AbstractDeployment):
             try:
                 if self._server_process.poll() is None:
                     self._server_process.terminate()
-                    self._server_process.wait(timeout=10)
+                    await asyncio.to_thread(self._server_process.wait, 10)
             except subprocess.TimeoutExpired:
                 self._server_process.kill()
-                self._server_process.wait()
+                await asyncio.to_thread(self._server_process.wait)
             except Exception as exc:
                 self.logger.error(f"Failed to stop local Apptainer process: {exc}")
             finally:
