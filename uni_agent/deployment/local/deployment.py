@@ -383,7 +383,11 @@ class LocalDeployment(AbstractDeployment):
 
         if self._container_name and not _is_apptainer_runtime(self._config.container_runtime):
             try:
-                self._runtime_exec([self._config.container_runtime, "rm", "-f", self._container_name], False)
+                await asyncio.to_thread(
+                    self._runtime_exec,
+                    [self._config.container_runtime, "rm", "-f", self._container_name],
+                    False,
+                )
             except Exception as exc:
                 self.logger.error(f"Failed to delete local sandbox {self._container_name}: {exc}")
             finally:
