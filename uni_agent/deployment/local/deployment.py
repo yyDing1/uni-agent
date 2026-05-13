@@ -277,11 +277,14 @@ class LocalDeployment(AbstractDeployment):
 
     async def _start_oci_container(self, token: str, container_name: str, published_port: int) -> None:
         command = self._format_command(token=token, port=self._config.runtime_port)
-        result = self._runtime_exec(self._build_run_command(container_name, published_port, command))
+        result = await asyncio.to_thread(
+            self._runtime_exec, self._build_run_command(container_name, published_port, command)
+        )
         self._container_id = result.stdout.strip()
+        host = await asyncio.to_thread(self._get_runtime_host, container_name)
         runtime_config = LocalRuntimeConfig(
             auth_token=token,
-            host=self._get_runtime_host(container_name),
+            host=host,
             port=self._config.runtime_port,
             timeout=self._config.timeout,
         )
