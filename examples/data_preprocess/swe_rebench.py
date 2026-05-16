@@ -130,7 +130,7 @@ def build_swe_rebench():
             "git gc --prune=now --aggressive",
             # Verify future logs aren't available
             f"TARGET_TIMESTAMP=$(git show -s --format=%ct {metadata['base_commit']})",
-            "AFTER_TIMESTAMP=$((BASE_TS + 1))",
+            "AFTER_TIMESTAMP=$((TARGET_TIMESTAMP + 1))",
             'COMMIT_COUNT=$(git log --oneline --all --since="$AFTER_TIMESTAMP" | wc -l)',
             '[ "$COMMIT_COUNT" -eq 0 ] || exit 1',
         ]
