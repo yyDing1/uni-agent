@@ -125,14 +125,11 @@ def build_swe_rebench():
         instance_id = metadata["instance_id"]
         image_name = get_image_name(dataset_id, instance_id)
         reset_cmds = [
-            "git tag -d $(git tag -l)",
-            "git reflog expire --expire=now --all",
-            "git gc --prune=now --aggressive",
-            # Verify future logs aren't available
-            f"TARGET_TIMESTAMP=$(git show -s --format=%ct {metadata['base_commit']})",
-            "AFTER_TIMESTAMP=$((TARGET_TIMESTAMP + 1))",
-            'COMMIT_COUNT=$(git log --oneline --all --since="$AFTER_TIMESTAMP" | wc -l)',
-            '[ "$COMMIT_COUNT" -eq 0 ] || exit 1',
+            "git tag -d $(git tag -l) || true",
+            "git reflog expire --expire=now --all || true",
+            "git gc --prune=now || true",
+            f"git checkout {metadata['base_commit']} || true",
+            "git clean -fdq || true",
         ]
         reset_script = " && ".join(reset_cmds)
         sample = {

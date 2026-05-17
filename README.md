@@ -120,10 +120,11 @@ If you find the project helpful, please cite:
 
 ```
 @misc{uniagent_github,
-  author       = {Yuyang Ding and Guangming Sheng and Xibin Wu and Uni-Agent Contributors},
+  author       = {Yuyang Ding and Guangming Sheng and Xibin Wu and Juntao Li and Uni-Agent Contributors},
   title        = {Uni-Agent: Build, Run, and Train Agents at Scale},
   year         = {2026},
   howpublished = {\url{https://github.com/yyDing1/uni-agent}},
+  note         = {GitHub repository. Supervisor: Xibin Wu and Juntao Li},
   urldate      = {2026-03-27}
 }
 ```
