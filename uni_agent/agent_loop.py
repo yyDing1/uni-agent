@@ -133,8 +133,8 @@ class UniAgentLoop(AgentLoopBase):
 
         return AgentLoopOutput(
             prompt_ids=prompt_ids,
-            response_ids=[dummy_token_id] * 1024,
-            response_mask=[0] * 1024,
+            response_ids=[dummy_token_id] * 512,
+            response_mask=[0] * 512,
             response_logprobs=None,
             routed_experts=None,
             multi_modal_data={},
