@@ -94,7 +94,7 @@ class UniAgentLoop(AgentLoopBase):
                     interaction_result["reward_score"] = -100
 
                 self._save_interaction_result(interaction_result)
-                output = self.convert_to_agent_output(interaction_result)
+                output = await self.convert_to_agent_output(interaction_result)
             except Exception as e:
                 self.logger.critical(f"Agent loop failed before producing interaction result: {e}")
                 output = await self._build_empty_agent_output(exit_reason="agent_loop_failed")
