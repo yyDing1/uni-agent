@@ -80,7 +80,9 @@ class UniAgentLoop(AgentLoopBase):
                 self.chat_model.set_tools_schemas(self.tools_manager.tools_schemas)
                 await self.env.install_tools(self.tools_manager.tools)
 
-                interaction_result = await self._run_interaction()
+                interaction_result = await self.interaction.run()
+                interaction_result["metrics"] = dict(interaction_result.get("rollout_cache", {}).get("metrics", {}))
+
                 # interaction environment should be visible to the reward spec
                 if self.reward_spec is not None:
                     reward_score, _ = await self.reward_spec.compute_reward(
@@ -102,11 +104,6 @@ class UniAgentLoop(AgentLoopBase):
             finally:
                 await self.env.close()
             return output
-
-    async def _run_interaction(self) -> dict:
-        interaction_result = await self.interaction.run()
-        interaction_result["metrics"] = dict(interaction_result.get("rollout_cache", {}).get("metrics", {}))
-        return interaction_result
 
     async def _build_empty_agent_output(self, exit_reason: str, error: Exception | None = None) -> AgentLoopOutput:
         self.chat_model.set_tools_schemas(self.tools_manager.tools_schemas)
