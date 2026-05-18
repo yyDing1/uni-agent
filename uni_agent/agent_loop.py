@@ -121,18 +121,19 @@ class UniAgentLoop(AgentLoopBase):
         if dummy_token_id is None:
             dummy_token_id = 0
 
-        extra_fields = {
-            "traj_masked": 1,
-            "traj_exit_reason": exit_reason,
-        }
-        if error is not None:
-            extra_fields["error"] = str(error)
+        max_response_length = self.config.actor_rollout_ref.rollout.response_length
+        dummy_response_length = min(512, max_response_length)
+
+        extra_fields = dict(rollout_cache.get("extra_fields") or {})
+        # TODO: implement traj_mask in verl
+        extra_fields["traj_masked"] = 1
+        extra_fields["traj_exit_reason"] = exit_reason
 
         return AgentLoopOutput(
             prompt_ids=prompt_ids,
-            response_ids=[dummy_token_id] * 512,
-            response_mask=[0] * 512,
-            response_logprobs=None,
+            response_ids=[dummy_token_id] * dummy_response_length,
+            response_mask=[0] * dummy_response_length,
+            response_logprobs=[0.0] * dummy_response_length,
             routed_experts=None,
             multi_modal_data={},
             reward_score=0,
@@ -225,7 +226,7 @@ class UniAgentLoop(AgentLoopBase):
         extra_fields["traj_masked"] = traj_masked
         extra_fields["traj_exit_reason"] = traj_exit_reason
         response_ids = prompt_ids[-len(response_mask) :]
-        prompt_ids = prompt_ids[: -len(response_mask)]
+        prompt_ids = prompt_ids[: len(prompt_ids) - len(response_mask)]
 
         max_prompt_length = self.config.actor_rollout_ref.rollout.prompt_length
         max_response_length = self.config.actor_rollout_ref.rollout.response_length
