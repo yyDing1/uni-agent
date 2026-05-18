@@ -103,7 +103,7 @@ The roadmap below highlights the next major directions for Uni-Agent.
 
 - [x] Local deployment support.
 - [x] Modal deployment support.
-- [ ] More cloud deploymeny backends
+- [ ] More cloud deployment backends.
 
 **Tool and Task Support**
 
