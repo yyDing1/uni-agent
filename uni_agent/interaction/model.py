@@ -192,6 +192,7 @@ class AgentChatModel:
 
         return []
 
+
 # this class is only used for Inference-Only Scenario
 class OpenAICompatibleChatModel:
     base_url: str
