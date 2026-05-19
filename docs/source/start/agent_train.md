@@ -11,14 +11,14 @@ For agent tasks, we recommend **fully asynchronous training**. Agent rollouts ha
 The figure below shows an example **Qwen3-30B-A3B-Instruct** training run on veFaaS (100 Turns, 128K), using R2E-Gym-Subset for training and SWE-Bench Verified for evaluation.
 
 <div style="margin: 20px 0; text-align: center;">
-  <img src="../results_qwen3_30b.png" alt="Qwen3.5-9B training results" style="width: 100%; max-width: 800px; height: auto;" />
+  <img src="../results_qwen3_30b.png" alt="Qwen3-Coder training results" style="width: 100%; max-width: 800px; height: auto;" />
 </div>
 
 
 The figure below shows an example **Qwen3.5-9B** training run on veFaaS (100 Turns, 128K), using SWE-reBench for training and SWE-Bench Verified for evaluation.
 
 <div style="margin: 20px 0; text-align: center;">
-  <img src="../results_qwen3p5_9b.png" alt="Qwen3-Coder training results" style="width: 100%; max-width: 800px; height: auto;" />
+  <img src="../results_qwen3p5_9b.png" alt="Qwen3.5-9B training results" style="width: 100%; max-width: 800px; height: auto;" />
 </div>
 
 The launch scripts live under `examples/agent_train`.
