@@ -23,7 +23,7 @@ The long-term vision is to build the backend infrastructure for next-generation 
 Start with the docs below:
 
 - `Launch`: [Launch an agent environment](https://uni-agent.readthedocs.io/en/latest/start/agent_env.html) to run simple demo scripts.
-- `Build`: [Build a simple search agent](https://uni-agent.readthedocs.io/en/latest/start/search_agent.html) with minimal customization for arXiv paper search and recommendation.
+- `Build`: [Build a simple search agent](https://uni-agent.readthedocs.io/en/latest/start/arxiv_search_agent.html) with minimal customization for arXiv paper search and recommendation.
 - `Scale`: [Run parallel agent interaction](https://uni-agent.readthedocs.io/en/latest/start/agent_interaction.html) for large-scale interaction, inference, and verification workloads.
 - `Train`: [Train an agent with reinforcement learning](https://uni-agent.readthedocs.io/en/latest/start/agent_train.html) using state-of-the-art training techniques.
 

@@ -1,4 +1,4 @@
-# Build a Simple Search Agent
+# Build a Simple Arxiv Search Agent
 
 Suppose you want an agent that can search arXiv, read recent paper abstracts, and return a shortlist of the most relevant results.
 

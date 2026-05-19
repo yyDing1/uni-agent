@@ -23,6 +23,6 @@ search agent, and then run larger-scale agent interaction examples.
 
    start/installation.md
    start/agent_env.md
-   start/search_agent.md
+   start/arxiv_search_agent.md
    start/agent_interaction.md
    start/agent_train.md
