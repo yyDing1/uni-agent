@@ -23,7 +23,7 @@ The wrapper script `examples/search_agent/run_localwiki_and_train.sh` handles st
 
 ---
 
-## Step 1: Prepare the Dataset
+## Step 1: Prepare the ASearcher Dataset
 
 Use `examples/data_preprocess/asearcher.py` to convert raw ASearcher JSON or JSONL data into Parquet files:
 

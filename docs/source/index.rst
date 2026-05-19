@@ -1,14 +1,13 @@
 Welcome to Uni-Agent's documentation!
 =====================================
 
-Uni-Agent is a framework for building and running long-horizon agent workflows.
-It provides a persistent agent environment, scalable interaction loops, and the
-infrastructure needed to evaluate agent behavior across many tasks.
+Uni-Agent is a framework for building, running, and training long-horizon agent
+workflows. It provides persistent sandboxes, tool-based interaction loops, and
+`verl` integration for scalable reinforcement learning.
 
-The quickstart guides below walk through the core workflow: install Uni-Agent on
-top of a `verl` environment, launch an agent environment, customize a simple
-search agent, train a retrieval agent, and then run larger-scale agent
-interaction examples.
+The quickstart guides below follow the main path: install Uni-Agent, launch an
+agent environment, build a simple tool-using agent, scale interaction across many
+tasks, and train agents with fully asynchronous RL.
 
 .. raw:: html
 

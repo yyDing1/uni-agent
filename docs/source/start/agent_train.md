@@ -74,7 +74,7 @@ cp examples/agent_interaction/runtime_env.yaml \
 
 Edit that file before launching training. For Modal, set `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`. For veFaaS, set `VEFAAS_FUNCTION_ID`, `VEFAAS_FUNCTION_ROUTE`, `VOLCE_ACCESS_KEY`, and `VOLCE_SECRET_KEY`.
 
-### Agent Config
+### Training Agent Config
 
 The training script controls the training system. The agent config controls what happens inside each rollout: sandbox backend, tools, interaction limits, and reward settings.
 
